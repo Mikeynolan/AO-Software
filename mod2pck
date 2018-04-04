@@ -1,0 +1,103 @@
+#!/usr/bin/perl -w
+
+use POSIX;
+
+  my $PI = 3.1415926535897932384626433832795028841971693993751;
+  my $DTOR = $PI / 180.;
+  my $RADEG = 180. / $PI;
+
+while (<STDIN>) {
+
+if (/(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\{yyyy mo dd hh mm ss of t0\}/) {
+$year = \1;
+$mo = \1;
+$day = \1;
+$hr = \1;
+$min = \1;
+$sec = \1;
+}
+
+if (/([-+0-9.E]+)\s+\{angle 0/) {
+  $phi = \1 * $DTOR;
+}
+if (/([-+0-9.E]+)\s+\{angle 1/) {
+  $theta = \1 * $DTOR;
+}
+if (/([-+0-9.E]+)\s+\{angle 2/) {
+  $psi = \1 * $DTOR;
+}
+if (/([-+0-9.E]+)\s+\{spin 2/) {
+  $Wdot = \1;
+}
+if (/([-+0-9.E]+)\s+\{spin [01]/) {
+  if (\1 == 0) {print STDERR "I don't know how to deal with non-principal rotation, but will ignore for now\n";}
+}
+
+}
+
+$epsilon = 23.43692 * $DTOR;
+
+$y = sin($epsilon)*sin($phi);
+$x = sin($theta)*cos($epsilon) + cos($theta)*sin($epsilon)*cos($phi);
+
+$W = ($psi - atan2($y, $x)) * $RADEG;
+
+$tf = julian($year, $mo, $day) + $hr / 24 + $min / 1440 + $sec / 86400;
+$to = julian(2000, 1, 1) + 11. / 24 + 58. /1440 + 55.816 / 86400;
+
+$W0 = ($W - $Wdot * ($tf - $to)) % 360.;
+if ($W0 < 0) {$W0 += 360.;}
+
+$dt = $tf - $to;
+
+print "$dt $W0\n";
+
+
+
+
+
+
+
+
+
+sub julian {
+
+    my($year, $month, $day) = @_;
+#       my($julcdr) = $_[3];     # test for gregorian maybe
+    my($julcdr) = 0;            # but not yet
+    my($lcy, $lcm, $lpyr, $lpdays);
+  
+#     Trap invalid months
+  
+    if ($month < 1 || $month > 12) {
+        return(-1);
+#           die ("***JULIAN: Month outside the range 1 to 12");
+    }
+#     Adjust 'internal' calendar to start in March so that leap days
+#     occur at end of year
+  
+    if ($month > 2) {
+        $lcy = $year;
+        $lcm = $month + 1;
+    } else {
+        $lcy = $year - 1;
+        $lcm = $month + 13;
+    }
+  
+#     If Gregorian calendar, adjust for missing leap days
+  
+    if ($julcdr) {
+        $lpdays = 0;
+    } else {
+        $lpyr = $lcy;
+        if ($lpyr < 0) {$lpyr++};
+        $lpdays = 2 - floor($lpyr/100) + floor($lpyr/400);
+    }
+  
+#     Accumulate Julian Date based on number of days per year and month
+    
+    $jdy = 365.25 * $lcy;
+    if ($lcy < 0) {$jdy -= 0.75;}
+    $jdm = 30.6001 * $lcm;
+    return(int($jdy) + int($jdm) + $day + 1720994.5 + $lpdays);
+}
