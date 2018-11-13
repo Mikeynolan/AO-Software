@@ -1,0 +1,125 @@
+#!/usr/bin/perl -w
+
+# Designed to run shape, and restart it if needed. If there is no logfile, it
+# just starts. If there is a partial logfile, if parses it to find the last
+# time the files were written and starts from there, making a temporary fpar
+# from the one it was given and filling in first_fitpar objfunc_start. -d
+# will prevent it from deleting this temporary fpar (but it's probably in /tmp). 
+# 
+use Getopt::Std;
+use File::Temp qw/ tempfile /;
+use Time::Piece;
+our $opt_c;
+our $opt_f;
+our $opt_d;
+getopts("dfc:");
+
+# Options: -c     command
+#          -f     run even if we end on final chi2
+#          -d     leave edited parfiles around
+# If no -c, then the command is "shape"
+if($#ARGV < 1){
+  print STDERR "usage: doshape [-c program] parfile modfile [obsfile] [logfile]\n";
+  exit;
+}
+
+$written = 0;
+$last = 0;
+$final = 0;
+$origchi2 = 0;
+$t = localtime();
+
+$par = $ARGV[0];
+$mod = $ARGV[1];
+
+if ($#ARGV > 1){
+  $obs = $ARGV[2];
+} else {
+  ($obs = $mod) =~ s/mod/obs/;
+}
+
+if ($#ARGV > 2) {
+  $log = $ARGV[3];
+} else {
+  ($log = $mod) =~ s/mod/log/;
+}
+
+if ($opt_c) {
+	$cmd = $opt_c;
+} else {
+	$cmd = "shape";
+}
+
+open (WLOG, ">>", $log); #need to save what we're doing
+print WLOG "rerun starting up $t\n";
+
+if (! -s $log) {
+# if the logfile is empty or nonexistant, just run shape
+  print WLOG "New run: $cmd $par $mod $obs >> $log\n";
+  exec "$cmd $par $mod $obs >> $log";
+}
+
+# If we got here, we're restarting.
+
+
+open(LOG, "<", $log);
+
+while (<LOG>) {
+
+  if (/writing model/) {
+    $written = $last;
+    $final = 0; # If writing is after final, we did another one
+    next; 
+  }
+
+  if (/final chi2/) {
+    $final = 1;
+  }
+  if (/iteration\s+\d+\s+([0-9.deDE]+)/ ) {
+    $origchi2 = $1;
+  }
+  if (/^\s*(\d+)\s+[0-9.]+\s+[0-9]/) {
+    $last = $1;
+  }
+} # While LOG
+
+close(LOG);
+
+# If the last thing we saw was "final", maybe we should quit.
+if($final) {
+  if ($opt_f) {
+    print WLOG "logfile shows done, restarting on -f\n";
+    print WLOG "New iteration: $cmd $par $mod $obs >> $log\n";
+    exec "$cmd $par $mod $obs >> $log";
+  } else {
+    print WLOG "logfile shows done, quitting\n";
+    exit;
+  }
+}
+
+$next = $written + 1;
+# Massage up a new parfile
+
+($fh,$parname) = tempfile("fpar-rerun-XXXXXXX");
+open(PAR, "<", $par);
+while (<PAR>) {
+
+  if (/^\s*action/){
+    print $fh $_;
+    print $fh "first_fitpar $next\n";
+    print $fh "objfunc_start $origchi2\n";
+    next;
+  }
+  if (/^\s*first_fitpar/) {
+    next;
+  }
+  print $fh $_;
+}
+
+if ($opt_d){
+  print WLOG "Restarting: $cmd $parname $mod $obs >> $log\n";
+  exec "$cmd $parname $mod $obs >> $log";
+} else {
+  print WLOG "Restarting: $cmd $parname $mod $obs >> $log ; /bin/rm $parname\n";
+  exec "$cmd $parname $mod $obs >> $log ; /bin/rm $parname";
+}
