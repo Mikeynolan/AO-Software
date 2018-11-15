@@ -4,7 +4,7 @@
 # just starts. If there is a partial logfile, if parses it to find the last
 # time the files were written and starts from there, making a temporary fpar
 # from the one it was given and filling in first_fitpar objfunc_start. -d
-# will prevent it from deleting this temporary fpar (but it's probably in /tmp). 
+# will prevent it from deleting this temporary fpar in case you want to check it. 
 # 
 use Getopt::Std;
 use File::Temp qw/ tempfile /;
