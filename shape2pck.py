@@ -1,4 +1,4 @@
-from math import pi, sin, cos, atan2, asin
+from math import pi, sin, cos, atan2, asin, acos
 import numpy as np
 
 # some arrays are transposed wrt matlab
@@ -63,7 +63,7 @@ def shape2pck(ETsecs, angle0, angle1, angle2, spin2, spindot2):
     W0 = (W - spin_rate * epoch - 0.5 * spin_accel * epoch * epoch) % 360
     return(alpha_z, delta_z, W0)
 
-def pck2shape(RA0, DEC0, W0);
+def pck2shape(RA0, DEC0, W0):
     #
     # This will give values for an epoch of J2000. It could do a more
     # useful epoch, or that could happen elsewhere. Note that J2000 isn't a
@@ -106,11 +106,10 @@ def pck2shape(RA0, DEC0, W0);
 
     theta = acos(z_ec[2])
     psi = atan2(x_ec[2], y_ec[2])
-    phi = atan2(z_ec[0], z_ec[1])
+    phi = atan2(z_ec[0], -z_ec[1])
 
     angle0 = phi * 180 / pi
     angle1 = theta * 180 / pi
     angle2 = psi * 180 / pi
 
     return(angle0, angle1, angle2)
-
