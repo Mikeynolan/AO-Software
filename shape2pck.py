@@ -1,9 +1,164 @@
+"""
+shape2pck converts the spin parameters back and forth from shape to pck
+(surprise) formats. It takes an input file either on the command line
+or as stdin and outputs the spin state portion of the other format. It
+undertands spin accelerations (YORP), but no other changing spin state
+parameters (precession in pck, npa, libration, spin impulses in mod files)
+It's probably not robust against nonstandard formatting. In particular,
+there can be no blank lines in the spin block.'
+"""
 from math import pi, sin, cos, atan2, asin, acos
 import numpy as np
+from astropy.time import Time
+import re
+import fileinput
+import datetime
+import sys
+import argparse
 
+# search for either pck or mod marker.
+
+
+# \begindata
+#    BODY2101955_POLE_RA    = (  85.4567       0.              0. )
+#    BODY2101955_POLE_DEC   = ( -60.3574       0.              0. )
+#    BODY2101955_PM         = ( 135.8156  2011.14645095 1.815e-06 )
+#    BODY2101955_LONG_AXIS  = (   0.                              )
+# \begintext
+def main():
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('infile', nargs='?', type=argparse.FileType('r'),
+                        default=sys.stdin)
+   
+    parser.add_argument("-e", "--epoch", action="store",
+                    help="t0 to use when generating a shape spin block",
+                    default="2000-01-01T00:00:00")
+    args = parser.parse_args()
+    
+    RE_PCK = re.compile(r'\\begindata')
+    RE_MOD = re.compile(r'{SPIN STATE}')
+    ftype = 0
+    it = args.infile
+    for line in it:
+        mo = re.search(RE_PCK, line)
+        if mo:
+            ftype = 1
+            break
+        mo = re.search(RE_MOD, line)
+        if mo:
+            ftype = 2
+            break
+        
+    # THis is a perl-y way to do it. 
+    if (0 == ftype):
+        sys.exit('No spin state found')
+    
+    # We just found one or the other of the markers.
+    if (1 == ftype):
+        #PCK. Parse and send to spck2shape
+        # Could have multiple \beginttext and \begindata
+        #Could also get spicypy, but that seems like overkill to read three lines
+        indata = True #Did a seek[0] becsue I cant move it
+        RA0 = 999
+        DEC0 = 999
+        W0 = 999
+        for line in it:
+            vals = line.split()
+            if indata and vals:
+                if vals[0].endswith("_POLE_RA"):
+                    RA0 = float(vals[3])
+                elif vals[0].endswith("_POLE_DEC"):
+                    DEC0 = float(vals[3])
+                elif vals[0].endswith("_PM"):
+                    W0 = float(vals[3])
+                    W1 = float(vals[4])
+                    W2 = float(vals[5])
+                elif vals[0].startswith("\\begintext"):
+                    indata = False
+            elif vals and vals[0].startswith("\\begindata"):
+                indata = True
+        #Done parsing pck
+        it.close()
+        if RA0 < 999 and DEC0 < 999 and W0 < 999:
+            angles = pck2shape(RA0,DEC0,W0)
+            writemod(args.epoch, W1, W2, angles)
+        else:
+            print ("Didn't find spin parameters in PCK file")
+            exit(1)
+    elif 2 == ftype:
+        #mod file.
+        # {SPIN STATE}
+        # 2001  3 18  0  0  0 {yyyy mo dd hh mm ss of t0}
+        #  c    60.0000000000 {angle 0 (deg) lambda=330.000000}
+        #  c   179.0000000000 {angle 1 (deg) beta=-89.000000}
+        #  f   320.4246664927 {angle 2 (deg)}
+        #  c     0.0000000000 {spin 0 (deg/day)}
+        #  c     0.0000000000 {spin 1 (deg/day)}
+        #  c   712.1444532272 {spin 2 (deg/day) P=12.132370}
+        #  c     0.5511373633 {moment of inertia 0}
+        #  c     1.2996277328 {moment of inertia 1}
+        #  c     1.3736408397 {moment of inertia 2}
+        #  c     0.0000000000 {spin 0 dot (deg/day/day)}
+        #  c     0.0000000000 {spin 1 dot (deg/day/day)}
+        #  c     0.0000000000 {spin 2 dot (deg/day/day)}
+        #  c     0.0000000000 {Libration Amplitude (degrees)}
+        #  c     0.0000000000 {Libration Frequency (degrees/day)}
+        #  c     0.0000000000 {Libration Phase (degrees)}
+        #                   0 {number of spin impulses}
+        line = next(it)
+        vals = line.split()
+        epoch = [int(i) for i in vals[0:6]]
+        epoch = Time(datetime.datetime(*epoch))
+        # PCK needs J2000 TDB.
+        daysJ2000 = (epoch - Time(datetime.datetime(2000,1,1,12,0,0),scale='tdb')).jd
+        line = next(it)
+        vals=line.split()
+        angle0 = float(vals[1])
+        line = next(it)
+        vals=line.split()
+        angle1 = float(vals[1])
+        line = next(it)
+        vals=line.split()
+        angle2 = float(vals[1])
+        line = next(it)
+        vals=line.split()
+        spin0 = float(vals[1])
+        line = next(it)
+        vals=line.split()
+        spin1 = float(vals[1])
+        line = next(it)
+        vals=line.split()
+        spin2 = float(vals[1])
+        line = next(it) # Skip moments of inertia
+        line = next(it)  
+        line = next(it)
+        line = next(it) 
+        #ancient files don't have YORP parameters
+        if line.index("spin 0 dot") > 0:
+            vals=line.split()
+            spin0dot = float(vals[1])
+            line = next(it)
+            vals=line.split()
+            spin1dot = float(vals[1])
+            line = next(it)
+            vals=line.split()
+            spin2dot = float(vals[1])
+        else:
+            spin0dot = 0
+            spin1dot = 0
+            spin2dot = 0
+            
+        # Check for invalid ones
+        if 0 != spin0 or 0 != spin1 or 0 != spin0dot or 0 != spin1dot:
+            sys.exit("NPA rotation can't be converted to a text pck")
+        it.close()
+        stuff=shape2pck(daysJ2000,angle0, angle1, angle2, spin2, spin2dot)
+        writepck(stuff,spin2,spin2dot)
+    
 # some arrays are transposed wrt matlab
 
-def shape2pck(ETsecs, angle0, angle1, angle2, spin2, spindot2):
+def shape2pck(ETdays, angle0, angle1, angle2, spin2, spindot2):
     # Equatorial vs. Ecliptic. Shape uses this value (IAU2006)
     eps = 84381.406/3600*pi/180
     rot2eq = np.array([
@@ -13,7 +168,7 @@ def shape2pck(ETsecs, angle0, angle1, angle2, spin2, spindot2):
     ])
     #rot2eq = rot2eq.transpose()
     # Time and rotation rate
-    epoch = ETsecs # Sec past J2000. Should this routine do the ET-UT J2000?
+    epoch = ETdays # Days past J2000 TDB. 
     phi = angle0 * pi / 180
     theta = angle1 * pi / 180
     psi = angle2 * pi / 180
@@ -23,8 +178,8 @@ def shape2pck(ETsecs, angle0, angle1, angle2, spin2, spindot2):
     sphi = sin(phi)
     cpsi = cos(psi)
     spsi = sin(psi)
-    spin_rate = spin2 / 86400; # in deg/sec
-    spin_accel = spindot2 / 86400 / 86400
+    spin_rate = spin2; # in deg/day
+    spin_accel = spindot2
     xhat = np.array([1,0,0])
     zhat = np.array([0,0,1])
     # ZXZ euler angles to rotation matrix (paraphrasing shape code)
@@ -59,15 +214,14 @@ def shape2pck(ETsecs, angle0, angle1, angle2, spin2, spindot2):
     
     # Angle from equinox to x-axis
     W = atan2(x_bennu_eqx[1], x_bennu_eqx[0]) * 180/pi
-    
     W0 = (W - spin_rate * epoch - 0.5 * spin_accel * epoch * epoch) % 360
+
     return(alpha_z, delta_z, W0)
 
 def pck2shape(RA0, DEC0, W0):
     #
-    # This will give values for an epoch of J2000. It could do a more
-    # useful epoch, or that could happen elsewhere. Note that J2000 isn't a
-    # legal date in shape, which requires integer seconds. Since it's J2000,
+    # This will give values for an epoch of J2000. That's not legal inb a mod
+    # file, so need to fix it up later. Since it's J2000,
     # don't care about W1 and W2
     #I am as literally as possible undoing shape2pck, which comes from
     #Steve Chesley's compute_W0
@@ -82,7 +236,7 @@ def pck2shape(RA0, DEC0, W0):
     a = RA0 * pi / 180.
     d = DEC0 * pi / 180
     w = W0 * pi / 180
-    xhat = np.array([1,0,0])
+ #   xhat = np.array([1,0,0])
     zhat = np.array([0,0,1])
 
     z_eq =  np.array([cos(a)*cos(d), sin(a)*cos(d), sin(d)]);
@@ -113,3 +267,57 @@ def pck2shape(RA0, DEC0, W0):
     angle2 = psi * 180 / pi
 
     return(angle0, angle1, angle2)
+
+def writepck(stuff, spin2, spin2dot):
+    RA0 = stuff[0]
+    DEC0 = stuff[1]
+    W0 = stuff[2]
+    W2 = spin2dot/2 # squared term of polynomial, not accel
+    
+    print("\\begindata")
+    print(f'BODY2XXXXXX_POLE_RA   = ( {RA0:14.10f}    0.0    0.0 )')
+    print(f'BODY2XXXXXX_POLE_DEC  = ( {DEC0:14.10f}    0.0    0.0 )')
+    print(f'BODY2XXXXXX_PM        = ( {W0:14.10f} {spin2:.10f} {W2:7e} )')
+    print('BODY2XXXXXX_LONG_AXIS  = (   0.                              )')
+    print("\\begintext")
+
+def writemod(ep, W1, W2, angles):
+    # Epoch is UTC date for mod file, Need to adjust angle2 to match. pck was
+    # J2000 TDB, so always need an adjustment. 
+    J2000 = Time(datetime.datetime(2000,1,1,12,0,0),scale='tdb')
+    moddate = Time(ep, format='isot', scale='utc')
+    # truncate seconds if provided
+    moddate=Time(int(moddate.to_value(format='unix')),format='unix',scale='utc')
+    diff = (moddate - J2000).jd
+    d=moddate.to_value('datetime')
+    w0 = angles[2] 
+    w = (w0 + W1*diff + W2*diff*diff) % 360
+    elon = (angles[0] - 90) % 360
+    elat = (90 - angles[1])
+    per = 24 / (W1 / 360)
+    accel = W2 * 2 # accel, not squared term
+    print( "{SPIN STATE}")
+    print(f"    {d.year:4d} {d.month:2d} {d.day:2d} "
+          f"{d.hour:2d} {d.minute:2d} {d.second:2d} "
+          f"{{yyyy mo dd hh mm ss of t0}}")
+    print(f" c   {angles[0]:14.10f} {{angle 0 (deg) lambda={elon:10.6f}}}")
+    print(f" c   {angles[1]:14.10f} {{angle 1 (deg) beta={elat:10.6f}}}")
+    print(f" c   {w:14.10f} {{angle 2 (deg)}}")
+    print( " c     0.0000000000 {spin 0 (deg/day)}")
+    print( " c     0.0000000000 {spin 1 (deg/day)}")
+    print(f" c   {W1:.10f} {{spin 2 (deg/day) P={per:.6f}}}")
+    print( " c     1.0000000000 {moment of inertia 0}")
+    print( " c     1.1000000000 {moment of inertia 1}")
+    print( " c     1.2000000000 {moment of inertia 1}")
+    print( " c     0.0000000000 {spin 0 dot (deg/day/day)}")
+    print( " c     0.0000000000 {spin 1 dot (deg/day/day)}")
+    print(f" c   {accel:14.10f} {{spin 2 dot (deg/day/day)}}")
+    print( " c     0.0000000000 {Libration Amplitude (degrees)}")
+    print( " c     0.0000000000 {Libration Frequency (degrees/day)}")
+    print( " c     0.0000000000 {Libration Phase (degrees)}")
+    print( "                  0 {number of spin impulses}")
+
+    
+if __name__ == '__main__':
+    main()
+    
