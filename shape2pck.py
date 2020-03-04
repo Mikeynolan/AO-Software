@@ -20,12 +20,6 @@ import argparse
 # search for either pck or mod marker.
 
 
-# \begindata
-#    BODY2101955_POLE_RA    = (  85.4567       0.              0. )
-#    BODY2101955_POLE_DEC   = ( -60.3574       0.              0. )
-#    BODY2101955_PM         = ( 135.8156  2011.14645095 1.815e-06 )
-#    BODY2101955_LONG_AXIS  = (   0.                              )
-# \begintext
 def main():
     """Process pck or mod file.
 
@@ -48,6 +42,9 @@ def main():
                         "Default is 2001-01-00T00:00:00. "
                         "Ignored when coverting to PCK.",
                         default="2000-01-01T00:00:00")
+    parser.add_argument("-n", "--naifid", action="store",
+                        help="NAIFID to use in pck",
+                        default="2XXXXXX")
     args = parser.parse_args()
 
     RE_PCK = re.compile(r'\\begindata')
@@ -74,7 +71,13 @@ def main():
         # Could have multiple \beginttext and \begindata
         # Could also get spicypy, but that seems like overkill to read
         # three lines
-        indata = True  # Did a seek[0] becsue I cant move it
+        # \begindata
+        #    BODY2101955_POLE_RA    = (  85.4567       0.              0. )
+        #    BODY2101955_POLE_DEC   = ( -60.3574       0.              0. )
+        #    BODY2101955_PM         = ( 135.8156  2011.14645095 1.815e-06 )
+        #    BODY2101955_LONG_AXIS  = (   0.                              )
+        # \begintext
+        indata = True
         RA0 = 999
         DEC0 = 999
         W0 = 999
@@ -170,7 +173,7 @@ def main():
             sys.exit("NPA rotation can't be converted to a text pck")
         it.close()
         stuff = shape2pck(daysJ2000, angle0, angle1, angle2, spin2, spin2dot)
-        writepck(stuff, spin2, spin2dot)
+        writepck(stuff, spin2, spin2dot,args.naifid)
 
 # some arrays are transposed wrt matlab
 
@@ -294,7 +297,7 @@ def pck2shape(RA0, DEC0, W0):
     return(angle0, angle1, angle2)
 
 
-def writepck(stuff, spin2, spin2dot):
+def writepck(stuff, spin2, spin2dot, naifid):
     """Write out the pck block.
 
     Write out the pck-formatted values. Use lots of digits, because the
@@ -306,10 +309,10 @@ def writepck(stuff, spin2, spin2dot):
     W2 = spin2dot/2  # squared term of polynomial, not accel
 
     print("\\begindata")
-    print(f'BODY2XXXXXX_POLE_RA   = ( {RA0:14.10f}    0.0    0.0 )')
-    print(f'BODY2XXXXXX_POLE_DEC  = ( {DEC0:14.10f}    0.0    0.0 )')
-    print(f'BODY2XXXXXX_PM        = ( {W0:14.10f} {spin2:.10f} {W2:7e} )')
-    print(f'BODY2XXXXXX_LONG_AXIS = (   0.                         )')
+    print(f'BODY{naifid}_POLE_RA   = ( {RA0:14.10f}    0.0    0.0 )')
+    print(f'BODY{naifid}_POLE_DEC  = ( {DEC0:14.10f}    0.0    0.0 )')
+    print(f'BODY{naifid}_PM        = ( {W0:14.10f} {spin2:.10f} {W2:7e} )')
+    print(f'BODY{naifid}_LONG_AXIS = (   0.                         )')
     print("\\begintext")
 
 
