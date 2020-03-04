@@ -173,7 +173,7 @@ def main():
             sys.exit("NPA rotation can't be converted to a text pck")
         it.close()
         stuff = shape2pck(daysJ2000, angle0, angle1, angle2, spin2, spin2dot)
-        writepck(stuff, spin2, spin2dot,args.naifid)
+        writepck(stuff, spin2, spin2dot, args.naifid)
 
 # some arrays are transposed wrt matlab
 
