@@ -32,12 +32,15 @@ def main():
     parser.add_argument("-E", "--EPHROW", action="store", type=float,
                         help="EPH_ROW to apply to all images.",
                         )
+    parser.add_argument('-g', '--goal', action='store_true',
+                        help='Use GOAL_ROW in first image rather than EPH_ROW'
+                        ' to match a previous use of sbalign')
     parser.add_argument("-b", "--boundary", choices=['wrap', 'nearest',
                                                      'const'],
                         default='wrap',
                         help='how to treat edges')
     parser.add_argument("-c", "--cval", action="store", default=0, type=float,
-                        help='Constant to use for constant padding')
+                        help='Constant to use for constant padding, default 0')
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-i", "--inplace", action="store_true",
                        help='edit files in-places rather than appending .s')
@@ -56,13 +59,24 @@ def main():
             hdl = fits.open(newfile, 'update')
 
         if first:
+            first = False
             if args.EPHROW:
                 erow = args.EPHROW
             else:
-                try:
-                    erow = hdl[0].header['EPH_ROW']
-                except KeyError:
-                    exit('No EPH_ROW found or specified')
+                nogoal = True
+                if args.goal:
+                    nogoal = False
+                    try:
+                        erow = hdl[0].header['GOAL_ROW']
+                    except KeyError:
+                        nogoal = True
+                if nogoal:
+                    try:
+                        erow = hdl[0].header['EPH_ROW']
+                    except KeyError:
+                        exit('No EPH_ROW found or specified')
+            print(f'Aligning to new EPH_ROW of {erow}')
+
         try:
             ferow = hdl[0].header['EPH_ROW']
         except KeyError:
@@ -80,7 +94,8 @@ def main():
 
         hdl[0].header['EPH_ROW'] = newerow
         hdl[0].header['CRPIX2'] = newerow + 1
-        hdl[0].header['SBALIGN'] = (shift, 'Shift applied in sbalign')
+        hdl[0].header['GOAL_ROW'] = (erow, 'Goal row in sbalign')
+        hdl[0].header['HISTORY'] = (f'Shift of {shift} applied in sbalign')
         data = hdl[0].data
         print(f'Shifting {f} by {shift} pixels.')
         if args.boundary == 'const':
