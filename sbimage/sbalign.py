@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""sbalign will adjust a series of sband images to have the same eph_row.
+"""Adjust a series of sband images to have the same eph_row.
 
 Default is to choose the first image.
+It will error if asked to shift by more than one whole images, but does not
+otherwise know that the shift is reasonable.
 
 Created on Fri Mar 13 16:55:02 2020
 @author: nolan
@@ -10,7 +12,6 @@ Created on Fri Mar 13 16:55:02 2020
 
 import argparse
 from astropy.io import fits
-import sys
 import os
 import shutil
 import scipy.ndimage
@@ -48,61 +49,82 @@ def main():
                        help='suffix to add to new file name')
     args = parser.parse_args()
 
-    first = True
+    if args.EPHROW:
+        erow = args.EPHROW
+    else:
+        ff = args.filename[0]
+        hdl = fits.open(ff, mode='readonly')
+        if args.goal and 'GOAL_ROW' in hdl[0].header:
+            erow = hdl[0].header['GOAL_ROW']
+            print(f"Aligning to GOAL_ROW of {erow}.")
+        elif 'EPH_ROW' in hdl[0].header:
+            erow = hdl[0].header['EPH_ROW']
+            print(f"Aligning to EPH_ROW of {erow}.")
+        else:
+            raise KeyError('No EPH_ROW found or specified')
+
     for f in args.filename:
         if args.inplace:
-            hdl = fits.open(f, mode='update')
+            outfile = ''
         else:
             base, ext = os.path.splitext(f)
-            newfile = base + args.suffix + ext
-            shutil.copyfile(f, newfile)
-            hdl = fits.open(newfile, 'update')
+            outfile = base + args.suffix + ext
 
-        if first:
-            first = False
-            if args.EPHROW:
-                erow = args.EPHROW
-            else:
-                nogoal = True
-                if args.goal:
-                    nogoal = False
-                    try:
-                        erow = hdl[0].header['GOAL_ROW']
-                    except KeyError:
-                        nogoal = True
-                if nogoal:
-                    try:
-                        erow = hdl[0].header['EPH_ROW']
-                    except KeyError:
-                        exit('No EPH_ROW found or specified')
-            print(f'Aligning to new EPH_ROW of {erow}')
+        sbalign(f, outfile, erow, args.inplace, args.boundary, args.cval)
+
+
+def sbalign(infile, outfile, erow, inplace=False, boundary='wrap', cval=0):
+    """Sbalign one file.
+
+    Inputs
+    ------
+    input file name
+    output file name (ignoded if in-place)
+    inplace Boolean
+    erow - Epehemris row to align to
+    boundary condition
+    constant value for boundary = 'const'
+
+
+    Returns: None
+
+    Has side effect of adding descriptive keywords even if no shift done
+    """
+    if inplace:
+        hdl = fits.open(infile, 'update')
+    else:
+        shutil.copyfile(infile, outfile)
+        hdl = fits.open(outfile, 'update')
 
         try:
             ferow = hdl[0].header['EPH_ROW']
         except KeyError:
-            sys.exit(f'No EPH_ROW found in file {hdl.info()}')
+            raise KeyError(f'No EPH_ROW found in file {hdl.info()}')
         ysize = hdl[0].header['NAXIS2']
         shift = erow - ferow
         shift = round(shift)
         newerow = ferow + shift  # Leave fraction in eph_row
         if abs(shift) > ysize-1:
-            print(f'Would have to shift {f.name} by {shift} pixels but it is',
-                  ' only {ysize} pixels tall.')
-            print(f'EPH_ROW is {ferow}, shifting to {newerow}, skipping')
             hdl.close()
-            next
-
+            raise UserWarning(f'Would have to shift {infile} by {shift}'
+                              ' pixels but it is only {ysize} pixels tall.\n'
+                              'EPH_ROW is {ferow}, shifting to {newerow},'
+                              ' skipping')
         hdl[0].header['EPH_ROW'] = newerow
         hdl[0].header['CRPIX2'] = newerow + 1
         hdl[0].header['GOAL_ROW'] = (erow, 'Goal row in sbalign')
+
+        if not ('ORIG_ROW' in hdl[0].header):  # There is one original row
+            hdl[0].header['ORIG_ROW'] = ferow
         hdl[0].header['HISTORY'] = (f'Shift of {shift} applied in sbalign')
         data = hdl[0].data
-        print(f'Shifting {f} by {shift} pixels.')
-        if args.boundary == 'const':
-            sdata = scipy.ndimage.shift(data, (shift, 0), mode='constant',
-                                        cval=args.cval)
+        print(f'Shifting {infile} by {shift} pixels.')
+        if boundary == 'const':
+            sdata = scipy.ndimage.shift(data, (shift, 0), order=0,
+                                        mode='constant', cval=cval)
         else:
-            sdata = scipy.ndimage.shift(data, (shift, 0), mode=args.boundary)
+            sdata = scipy.ndimage.shift(data, (shift, 0), order=0,
+                                        mode=boundary)
         hdl[0].data = sdata
         hdl.close()
 
