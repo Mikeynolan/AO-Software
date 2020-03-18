@@ -15,6 +15,7 @@ from astropy.io import fits
 import os
 import shutil
 import scipy.ndimage
+import numpy
 
 
 def main():
@@ -119,7 +120,9 @@ def sbalign(infile, outfile, erow, inplace=False, boundary='wrap', cval=0):
         hdl[0].header['HISTORY'] = (f'Shift of {shift} applied in sbalign')
         data = hdl[0].data
         print(f'Shifting {infile} by {shift} pixels.')
-        if boundary == 'const':
+        if 'wrap' == boundary:  # scipy.ndimage has a known bug with wrap
+            sdata = numpy.roll(data, shift, axis=0)
+        elif 'const' == boundary:
             sdata = scipy.ndimage.shift(data, (shift, 0), order=0,
                                         mode='constant', cval=cval)
         else:
