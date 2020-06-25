@@ -22,15 +22,6 @@ $HEADER{'rigw'}=0;
 
 getopts ("l:b:re:");
 
-if ($#ARGV > -1) {
-  $logfile=$ARGV[0];
-} else {
-$logfile= `cat /share/olda/sbdir`;
-chomp $logfile;
-$logfile .= '/logfile';
-}
-  open (LOGFILE, $logfile);
-
 if ($#ARGV > 0) {$object = $ARGV[1];} else {$object = "";}
 
 format STDOUT=
@@ -39,7 +30,7 @@ $HEADER{'target'}
           @<<<<<<<<<<<<<<<<<<<<<<<<<UTC       @<<<<<<<<<<<<<<<<<<<<<<<<<AST
 scalar(gmtime()), scalar(localtime())
 
-     Code: @>>>>>    Baud:  ^###.#     GW:   ^###.#
+     Code: @>>>>>    Baud:  ^###.#     GW:^######.#
       ($HEADER{'phasemod'} =~ /1/)?$HEADER{'code'}:"CW",$HEADER{'baud'},$HEADER{'rigw'}
 Ephemeris: @*
            $HEADER{'ephemeris'}
@@ -58,7 +49,34 @@ $nextisdate = 0;
 $gotphase=0;
 $gotphaselast=0;
 
+if ($#ARGV > -1) {
+  $logfile=$ARGV[0];
+  $sbdir = 0;
+} else {
+  $logfile= `cat /share/olda/sbdir`;
+  chomp $logfile;
+  $logfile .= '/logfile';
+  $sbdir = 1;
+  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+      $atime,$mtime,$ctime,$blksize,$blocks) = stat('/share/olda/sbdir');
+  $oldt = $mtime;
+}
+open (LOGFILE, $logfile);
+
 while (1) {
+if ($sbdir) { # Check for new logfile after sbinit
+  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+      $atime,$mtime,$ctime,$blksize,$blocks) = stat('/share/olda/sbdir');
+  if ($mtime != $oldt) {
+    close(LOGFILE);
+    sleep 1;
+    $logfile= `cat /share/olda/sbdir`;
+    chomp $logfile;
+    $logfile .= '/logfile';
+    open (LOGFILE, $logfile);
+    $oldt = $mtime;
+  }
+}
 LOGLOOP: while (<LOGFILE>) {
   chomp;
   if ($nextisdate) {
