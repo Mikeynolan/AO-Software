@@ -31,7 +31,7 @@ $HEADER{'target'}
 scalar(gmtime()), scalar(localtime())
 
      Code: @>>>>>    Baud:  ^###.#     GW:^######.#
-      ($HEADER{'phasemod'} =~ /1/)?$HEADER{'code'}:"CW",$HEADER{'baud'},$HEADER{'rigw'}
+      ($HEADER{'phasemod'} =~ /1/)?($longcode?"long":$HEADER{'code'}):"CW",$HEADER{'baud'},$HEADER{'rigw'}
 Ephemeris: @*
            $HEADER{'ephemeris'}
 @*
@@ -124,6 +124,13 @@ LOGLOOP: while (<LOGFILE>) {
   }
 
   if (/^src\s=\s(.*)$/) {$HEADER{'target'} = "$1";}
+  if (/^pncgen\s+=\s+(\S+)/) {
+    if($1 eq "pncl") {
+      $longcode=1;
+    } else {
+      $longcode = 0;
+    }
+  }
   
   if (/^(\w+) = ([+-]?[0-9.]+)/) {$HEADER{$1} = $2; }
   
