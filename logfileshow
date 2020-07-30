@@ -1,0 +1,193 @@
+#!/usr/bin/perl -w
+#use strict;
+use Term::Cap;
+use Time::Local;
+# use Time::gmtime;
+use POSIX;
+use Getopt::Std;
+
+# Usage: logfiletofh  [logfile] [object] 
+%months = (Jan=>0, Feb=>1, Mar=>2, Apr=>3, May=>4, Jun=>5, Jul=>6, Aug=>7, Sep=>8, Oct=>9, Nov=>10, Dec=>11);
+$SPD=86400;
+
+#@stoplist=('_txsyn', 'tmephm', 'rispipp');
+$scan= ""; # gets used in a name
+$runnum=0;
+$statstring = "";
+$HEADER{'ephemeris'} = "";
+$HEADER{'target'} = "";
+$HEADER{'code'}=0;
+$HEADER{'baud'}=0;
+$HEADER{'rigw'}=0;
+
+getopts ("l:b:re:");
+
+if ($#ARGV > 0) {$object = $ARGV[1];} else {$object = "";}
+
+format STDOUT=
+Target: @*
+$HEADER{'target'}              
+          @<<<<<<<<<<<<<<<<<<<<<<<<<UTC       @<<<<<<<<<<<<<<<<<<<<<<<<<AST
+scalar(gmtime()), scalar(localtime())
+
+     Code: @>>>>>    Baud:  ^###.#     GW:^######.#
+      ($HEADER{'phasemod'} =~ /1/)?($longcode?"long":$HEADER{'code'}):"CW",$HEADER{'baud'},$HEADER{'rigw'}
+Ephemeris: @*
+           $HEADER{'ephemeris'}
+@*
+$statstring
+  Run Number    @<<<<<<<<<<<<<<<<<<<<<<<
+               $runnum;
+.
+$terminal = Term::Cap->Tgetent({OSPEED => 9600});
+$clear = $terminal->Tputs('cl');
+format STDOUT_TOP=
+@*
+$clear
+.
+$nextisdate = 0;
+$gotphase=0;
+$gotphaselast=0;
+
+if ($#ARGV > -1) {
+  $logfile=$ARGV[0];
+  $sbdir = 0;
+} else {
+  $logfile= `cat /share/olda/sbdir`;
+  chomp $logfile;
+  $logfile .= '/logfile';
+  $sbdir = 1;
+  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+      $atime,$mtime,$ctime,$blksize,$blocks) = stat('/share/olda/sbdir');
+  $oldt = $mtime;
+}
+open (LOGFILE, $logfile);
+
+while (1) {
+if ($sbdir) { # Check for new logfile after sbinit
+  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+      $atime,$mtime,$ctime,$blksize,$blocks) = stat('/share/olda/sbdir');
+  if ($mtime != $oldt) {
+    close(LOGFILE);
+    sleep 1;
+    $logfile= `cat /share/olda/sbdir`;
+    chomp $logfile;
+    $logfile .= '/logfile';
+    open (LOGFILE, $logfile);
+    $oldt = $mtime;
+  }
+}
+LOGLOOP: while (<LOGFILE>) {
+  chomp;
+  if ($nextisdate) {
+    ($Mon, $Day, $Hour, $Min, $Sec, $Year) = /\w+ (\w+) ([ \d]{2}) ([ \d]{2}):([ \d]{2}):([ \d]{2}) (\d{4})/;
+    $Year -= 1900;
+    $setup_secs = timelocal($Sec, $Min, $Hour, $Day, $months{$Mon}, $Year);
+    $nextisdate = 0;
+    next LOGLOOP;
+  }
+  if (/tx cycle.*up:(.*) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $txuptime= $1;
+    $txlength= $3 - $2;
+    while ($txlength < 0) {$txlength += $SPD;}
+  }
+  if (/rx cycle.*up:(.*) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $rxuptime= $1;
+    $rxlength = $3 - $2;
+    while ($rxlength < 0) {$rxlength += $SPD;}
+    ($hour, $min, $sec) = ($txuptime =~ /(..):(..):(..)/);
+    $txupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($txupsecs < $setup_secs) { $txupsecs += 86400};  # must have crossed midnight
+    $dateTL = strftime("%Y %h %d", localtime($txupsecs));
+    $statstring=  " Transmit cycle $dateTL, rx at $rxuptime, tx at $txuptime\n"; 
+    $runnum = "";
+    
+  }
+  if (/closeloop.*up:([0-9]*)\/(.*) down:([0-9]*)/) {
+    $txlength = $3 - $1;
+    while ($txlength < 0) {$txlength += $SPD;}
+    $rxlength = $txlength;
+    $rxuptime=$2;
+    $txuptime=$2;
+  }
+  if (/^sbinit logstart/) {$nextisdate = 1;}
+  if (/^ephname\s=\s(.*)/) {$HEADER{'ephemeris'} = $1; }
+  if (/^offsets tx: ([+-]?[0-9.]*) ([+-]?[0-9.]*) rx: ([+-]?[0-9.]*) ([+-]?[0-9.]*)/) {
+    $HEADER{'txoffra'} = $1;
+    $HEADER{'txoffdec'} = $2;
+    $HEADER{'rxoffra'} = $3;
+    $HEADER{'rxoffdec'} = $4;
+  }
+  if (/fracBd:([-+\d.]*)/) {
+    $HEADER{'fracBd'} = $1;
+    $gotphase=1;
+  }
+
+  if (/^src\s=\s(.*)$/) {$HEADER{'target'} = "$1";}
+  if (/^pncgen\s+=\s+(\S+)/) {
+    if($1 eq "pncl") {
+      $longcode=1;
+    } else {
+      $longcode = 0;
+    }
+  }
+  
+  if (/^(\w+) = ([+-]?[0-9.]+)/) {$HEADER{$1} = $2; }
+  
+  # This one is the marker
+  if (/rx on scan: (\d+) ([ \d]{2}):([ \d]{2}):([ \d]{2})/) {
+    $gotscan=1;
+  }
+  
+  if($gotscan || $gotphaselast) {
+    if ($gotscan) {
+      $scan = $1;
+    }
+    $gotscan = 0; $gotphaselast=0;
+    ($hour, $min, $sec) = ($rxuptime =~ /(..):(..):(..)/);
+    $rxupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($rxupsecs < $setup_secs) { $rxupsecs += 86400};
+    #    $ISOdateTXUP = strftime("%Y-%m-%dT%T", gmtime($txupsecs));
+    #    $ISOdateTXDN = strftime("%Y-%m-%dT%T", gmtime($txupsecs+$txlength));
+    #    $ISOdateRXUP = strftime("%Y-%m-%dT%T", gmtime($rxupsecs));
+    #    $ISOdateRXDN = strftime("%Y-%m-%dT%T", gmtime($rxupsecs+$rxlength));
+    $runnum = strftime("run%Y%m%d%H%M%S", gmtime($rxupsecs));
+#    $date = strftime("%Y%m%d", gmtime($rxupsecs));
+#    $etime = strftime("%H%M%S", gmtime($rxupsecs));
+    $HEADER{'exposure'} = $rxlength - $HEADER{'rxsecnoise'};
+    $dateL = strftime("%Y %h %d", localtime($rxupsecs));
+    
+    #    foreach $el (keys %HEADER) {
+    #      if (!defined($OH{$el}) || $HEADER{$el} ne $OH{$el} && ! grep /$el/, @stoplist) {print STDERR "$el = $HEADER{$el}\n";}
+    #    }
+    
+#    print STDERR "  Receive cycle $dateL, tx at $txuptime, scan $scan.\nEnter Power: ";
+    $statstring= "  Receive cycle $dateL, rx at $rxuptime, tx at $txuptime, scan $scan.\n";
+  }
+  
+  #    $power = <STDIN>;
+  #    if (! $power) {exit};
+  #    chomp $power;
+  #    print STDERR "Enter comments (blank to finish):\n";
+  #    @comments=();
+  #    do {
+  #      $line = <STDIN>;
+  #      if (!$line) {exit};
+  #      chomp $line;
+  #      if ($line) {
+  #	push @comments, $line;
+  #      }
+  #    } while $line;
+  #    
+#  $index++;
+#  %OH = %HEADER;
+  if ($gotphase) {
+    $gotphase = 0;
+    $gotphaselast=1;
+  }
+}
+   $- = 0;
+  write();
+  sleep 1;
+#  seek (STDIN, 0, 1);
+}
