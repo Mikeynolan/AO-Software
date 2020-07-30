@@ -189,5 +189,5 @@ LOGLOOP: while (<LOGFILE>) {
    $- = 0;
   write();
   sleep 1;
-  seek (STDIN, 0, 1);
+#  seek (STDIN, 0, 1);
 }
