@@ -196,7 +196,8 @@ def shape2pck(ETdays, angle0, angle1, angle2, spin2, spindot2):
     ])
     # rot2eq = rot2eq.transpose()
     # Time and rotation rate
-    epoch = ETdays  # Days past J2000 TDB.
+    # Using current rate, so delta is negative. Days past J2000 TDB.
+    epoch = -ETdays
     phi = angle0 * pi / 180
     theta = angle1 * pi / 180
     psi = angle2 * pi / 180
@@ -242,7 +243,7 @@ def shape2pck(ETdays, angle0, angle1, angle2, spin2, spindot2):
 
     # Angle from equinox to x-axis
     W = atan2(x_bennu_eqx[1], x_bennu_eqx[0]) * 180/pi
-    W0 = (W - spin_rate * epoch - 0.5 * spin_accel * epoch * epoch) % 360
+    W0 = (W + spin_rate * epoch + 0.5 * spin_accel * epoch * epoch) % 360
 
     return(alpha_z, delta_z, W0)
 
