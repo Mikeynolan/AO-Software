@@ -78,9 +78,9 @@ def main():
         #    BODY2101955_LONG_AXIS  = (   0.                              )
         # \begintext
         indata = True
-        RA0 = 999
-        DEC0 = 999
-        W0 = 999
+        RA0 = 999.0
+        DEC0 = 999.0
+        W0 = 999.0
         for line in it:
             vals = line.split()
             if indata and vals:
@@ -98,7 +98,7 @@ def main():
                 indata = True
         # Done parsing pck
         it.close()
-        if RA0 < 999 and DEC0 < 999 and W0 < 999:
+        if RA0 < 990 and DEC0 < 990 and W0 < 990:
             angles = pck2shape(RA0, DEC0, W0)
             writemod(args.epoch, W1, W2, angles)
         else:
@@ -164,16 +164,18 @@ def main():
             vals = line.split()
             spin2dot = float(vals[1])
         else:
-            spin0dot = 0
-            spin1dot = 0
-            spin2dot = 0
+            spin0dot = 0.0
+            spin1dot = 0.0
+            spin2dot = 0.0
 
         # Check for invalid ones
         if 0 != spin0 or 0 != spin1 or 0 != spin0dot or 0 != spin1dot:
             sys.exit("NPA rotation can't be converted to a text pck")
         it.close()
         stuff = shape2pck(daysJ2000, angle0, angle1, angle2, spin2, spin2dot)
-        writepck(stuff, spin2, spin2dot, args.naifid)
+        W1 = spin2 - daysJ2000 * spin2dot  # adjust spin2.
+        W2 = spin2dot/2  # squared term of polynomial, not accel
+        writepck(stuff, W1, W2, args.naifid)
 
 # some arrays are transposed wrt matlab
 
@@ -297,7 +299,7 @@ def pck2shape(RA0, DEC0, W0):
     return(angle0, angle1, angle2)
 
 
-def writepck(stuff, spin2, spin2dot, naifid):
+def writepck(stuff, W1, W2, naifid):
     """Write out the pck block.
 
     Write out the pck-formatted values. Use lots of digits, because the
@@ -306,19 +308,18 @@ def writepck(stuff, spin2, spin2dot, naifid):
     RA0 = stuff[0]
     DEC0 = stuff[1]
     W0 = stuff[2]
-    W2 = spin2dot/2  # squared term of polynomial, not accel
 
     print("\\begindata")
     print(f'BODY{naifid}_POLE_RA   = ( {RA0:14.10f}    0.0    0.0 )')
     print(f'BODY{naifid}_POLE_DEC  = ( {DEC0:14.10f}    0.0    0.0 )')
-    print(f'BODY{naifid}_PM        = ( {W0:14.10f} {spin2:.10f} {W2:7e} )')
+    print(f'BODY{naifid}_PM        = ( {W0:14.10f} {W1:.10f} {W2:7e} )')
     print(f'BODY{naifid}_LONG_AXIS = (   0.                         )')
     print("\\begintext")
 
 
 def writemod(ep, W1, W2, angles):
     """
-    Write out the mod file splibn block.
+    Write out the mod file spin block.
 
     Parameters
     ----------
@@ -344,11 +345,12 @@ def writemod(ep, W1, W2, angles):
                    scale='utc')
     diff = (moddate - J2000).jd
     d = moddate.to_value('datetime')
-    w0 = angles[2]
-    w = (w0 + W1*diff + W2*diff*diff) % 360
+    W0 = angles[2]
+    w = (W0 + W1*diff + W2*diff*diff) % 360
+    w1 = W1 + 2 * W2 * diff
     elon = (angles[0] - 90) % 360
     elat = (90 - angles[1])
-    per = 24 / (W1 / 360)
+    per = 24 / (w1 / 360)
     accel = W2 * 2  # accel, not squared term
     print(f"{{SPIN STATE}}")
     print(f"    {d.year:4d} {d.month:2d} {d.day:2d} "
@@ -359,7 +361,7 @@ def writemod(ep, W1, W2, angles):
     print(f" c   {w:14.10f} {{angle 2 (deg)}}")
     print(f" c     0.0000000000 {{spin 0 (deg/day)}}")
     print(f" c     0.0000000000 {{spin 1 (deg/day)}}")
-    print(f" c   {W1:.10f} {{spin 2 (deg/day) P={per:.6f}}}")
+    print(f" c   {w1:.10f} {{spin 2 (deg/day) P={per:.6f}}}")
     print(f" c     1.0000000000 {{moment of inertia 0}}")
     print(f" c     1.1000000000 {{moment of inertia 1}}")
     print(f" c     1.2000000000 {{moment of inertia 1}}")
