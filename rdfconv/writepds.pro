@@ -30,17 +30,36 @@ endif
 
 pairpointer = loaded
 
-writeapdsfile,pairpointer,outfile,chan=chan
+writeapdsfile,pairpointer,outfile,chan=chan,_extra=_ext
 
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro setpds,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,level=level,bookmark=bookmark, arecibo=arecibo,dss14=dss14
+pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help
 
 common pdsBlock,pds
 
-;default
-if n_tags(pds) eq 0 then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'Planetary Radar Team', level:'Calibrated', bookmark:'AO TX;AO RX'}
+if keyword_set(help) then begin
+print, "setpds [,/show][,name='value']... [/help]"
+print, "       /show shows the values"
+print, "       sets one or more required values for PDS. Names can be:"
+print, "       infile: OVERRIDE original rdf file in tags"
+print, "       target: OVERRIDE target listed in tags. Format is:"
+print, "               'asteroid,1999KW4'"
+print, "       pname: Product Name. REQUIRED, no default."
+print, "       ttype: Target Type. Default: 'Asteroid'"
+print, "       author: author XOR editor is REQUIRED"
+print, "       editor: author XOR editor is REQUIRED"
+print, "       level: Product Processing Level, default is 'Calibrated'"
+print, "       facet: Science Search Facet, default='Tabulated,Structure'"
+print, "       waves: Wavelength range, default = 'Microwave'"
+print, "       bookmark: depending on xmit_sta tag, defaults to"
+print, "                 'AO TX;AO RX;AO RI' or"
+print, "                 'DSS14 TX;DSS14 RX;DSS14 CW'"
+print, "       You can clear a value by setting it to '' (empty string)"
+endif
+               
+if n_tags(pds) eq 0 then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Calibrated', bookmark:'',facet: 'Tabulated,Structure', waves: 'Microwave'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
 end
@@ -52,7 +71,11 @@ if keyword_set(target) then pds.target = target
 if keyword_set(pname) then pds.pname = pname
 if keyword_set(ttype) then pds.ttype = ttype
 if keyword_set(author) then pds.author = author
+if keyword_set(editor) then pds.editor = editor
 if keyword_set(level) then pds.level = level
+if keyword_set(facet) then pds.facet = facet
+if keyword_set(bookmark) then pds.bookmark = bookmark
+if keyword_set(show) then help, pds,/str
 
 end
 
@@ -70,7 +93,7 @@ function getextral,extratags,name,help=help
 
 if size(name, /type) ne 7 then name = ''  ;  just so it's defined as a string
 
-if keyword_set(help) or isnull(name) or n_params() ne 1 then begin
+if keyword_set(help) or isnull(name) or n_params() ne 2 then begin
   print,' '
   print,'value = getextral(extratags,name[,stack=n][,/comment][,/help])'
   print,' '
@@ -124,7 +147,7 @@ end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro writeapdsfile,pairpointer,outfile,tablelun,chan=chan
+pro writeapdsfile,pairpointer,outfile,tablelun,chan=chan,_extra=_ext
 ; This will actually do the writing for one file.
 ; First implement the writing of the data, TODO add a table
 
@@ -144,9 +167,6 @@ endif
 
 ; pairpointter is a pointer to either the loaded pair or a stack entry. I *think* they look the same.
 ;pds is a structure containg the PDS keywords that aren't natively in the data
-
-err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
-if err ne 0 then return
 
 ; Check which channel(s) to write
 
@@ -174,53 +194,96 @@ nextra = (*pairpointer).nextra
 if nchan eq 2 then begin
   extratags_write = extratags
   nextra_write = nextra
-  addacomma = ','
+  addcomma = ','
 endif else begin
   splitExtra,chan,extratags,nextra,extratags_write,nextra_write
-  addacomma=''
+  addcomma=''
 endelse
+
+; Priority: set value, then rdf value
+mytarget = 'asteroid,'+tname
+if not isnull(pds.target) then mytarget = pds.target
+if isnull(mytarget) then begin
+  print, "Target not set in pair or setpds"
+  return
+end
+if isnull(pds.pname) then begin
+  print, "Product name is required"
+  return
+end
+if isnull(pds.author) + isnull(pds.editor) ne 1 then begin
+  print, "Must have either an author or an editor"
+  return
+end
+;
+; Station-specific stuff. Need to mark better
+;
+xmitsta = getextral(extratags,'xmit_sta')
+xmitpol = getextral(extratags,'xmit_poln')
+if notnull(xmitpol) then polstring='xmit_poln,'+xmitpol
+if xmitsta eq 'Arecibo' then begin
+  if isnull(pds.bookmark) then pds.bookmark='AO TX;AO RX;AO RI'
+  if isnull(xmitpol) then polstring='xmit_poln,LCP'
+endif else if xmitsta eq 'DSS14' then begin
+  if isnull(pds.bookmark) then pds.bookmark='DSS14 TX;DSS14 RX;DSS14 CW'
+endif
+
+
 
 ; Get the times Assuming jdstart and end are correct for now.
 ; convert to ISO. Do start last so we have start times in vars
 jdend = getextral(extratags,'jdend')
 caldat, jdend, mon,day,year,hh,mm,ss
-ss = fix(ss + 0.5) ; round to nearest to aboid jd rounding
-endstring = timestamp(day=day,hour=hh,min=mm,month=mon,second=ss,year=year,/utc)
+ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
+endstring = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
 jdstart = getextral(extratags,'jdstart')
 caldat, jdstart, mon,day,year,hh,mm,ss
-ss = int(ss + 0.5) ; round to nearest to aboid jd rounding
-startstring = timestamp(day=day,hour=hh,min=mm,month=mon,second=ss,year=year,/utc)
+ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
+startstring = string(year,mon,day,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)") 
+
+err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
+if err ne 0 then return
 
 ; Construct and print some PDS header strings
-printf, lun, '#Keywords,',addacomma
-printf, lun, 'Product Name,',pds.pname,addcomma
+printf, lun, '#Keywords,',addcomma
+printf, lun, 'Product Name,',qq(pds.pname),addcomma
 printf, lun, 'Product Description,CW spectrum converted from RDF format',addcomma
 printf, lun, 'Start Time,', startstring,addcomma
 printf, lun, 'Stop Time,', endstring, addcomma
-printf, lun, 'Target Name,', pds.target, addcomma
-printf, lun, 'Target Type,', pds.targettype, addcomma
-printf, lun, 'Author List,', pds.author, addcomma
-printf, lun, 'Product Processing Level,', pds.proclevel, addcomma
-printf, lun, 'Science Search Facet,', pds.facet, addcomma
-printf, lun, 'Product Wavelength Ranges,Microwave', addcomma
+printf, lun, 'Target Name,', qq(mytarget), addcomma
+printf, lun, 'Target Type,', qq(pds.ttype), addcomma
+if notnull(pds.author) then printf, lun, 'Author List,', qq(pds.author), addcomma
+if notnull(pds.editor) then printf, lun, 'Editor List,', qq(pds.editor), addcomma
+printf, lun, 'Product Processing Level,', qq(pds.level), addcomma
+printf, lun, 'Science Search Facet,', qq(pds.facet), addcomma
+printf, lun, 'Product Wavelength Ranges,',qq(pds.waves), addcomma
 ; next should be replaced with istruments and telescopes
-printf, lun, 'Observing System Bookmark,', pds.bookmark, addcomma 
-printf, lun, 'CW data file,', pds.infile, addcomma
+printf, lun, 'Observing System Bookmark,', qq(pds.bookmark), addcomma 
+inf = getextral(extratags,'infile')
+if notnull(pds.infile) then inf = pds.infile
+if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf), addcomma
+printf, lun, 'Software Version,20210411',addcomma
+
+caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
+ss = fix(ss + 0.5)
+nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
+printf, lun, 'File date,', nowstring, addcomma
 ;
 ; Now tags
 ;
 ; Should allow override
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec']
+tagnames = strlowcase(tag_names(tags[0]))
 for i = 0, ntags-1 do begin
-dummy=where(strlowcase(tname[i]) eq skiptags, count)
+dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
   if count gt 0 then continue
   if threecol then begin
-    tn = string(tname[i], format='(a,"_1,")')
+    tn = string(tagnames[i], format='(a,"_1,")')
     printf, lun, tn, tags[0].(i), addcomma
-    tn = string(tname[i], format='(a,"_2,")')
+    tn = string(tagnames[i], format='(a,"_2,")')
     printf, lun, tn, tags[1].(i), addcomma
   endif else begin
-    tn = string(tname[i], format='(a,",")')
+    tn = string(tagnames[i], format='(a,",")')
     printf, lun, tn, tags[chan].(i)
   endelse
 endfor
@@ -229,15 +292,21 @@ endfor
 ; and extra tags
 ;
 
+skipextra = ['xmit_pol','tzcorr','timezone']
 for i = 0, nextra-1 do begin
-  if (extratags[i].format eq 't') then continue ; skip tag names
-  printf, lun, extratags[i].name, ',', extratags[i].value, addcomma
+  if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
+  dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
+  if count gt 0 then continue
+  printf, lun, extratags[i].name, ',', qq(extratags[i].value), addcomma
 endfor
+;These were fixed up: keep in skiptags
+printf, lun, polstring, addcomma
+printf, lun, 'timezone,UTC',addcomma
 
 ;Column definitions
 
 printf, lun, "# Column Definitions,", addcomma
-if threcol then begin
+if threecol then begin
   printf, lun, 'frequency,pol1,pol2'
   printf, lun, 'real,real,real'
   printf, lun, 'Hz,,'
@@ -258,20 +327,20 @@ dfreq = tags[0].dfreq
 posfr = tags[0].posfr
 xjcen = tags[0].xjcen
 freq = posfr*dfreq*(dindgen(ndata) - xjcen)
-pair = (*stack[n-1]).spec
 
 
 if threecol then begin
-  for i = 0, ndata-1 do begin
-    printf, lun, dfreq,pair[0,i],pair[1,i], format='(e0,e0,e0)'
+  for i = 0L, ndata-1 do begin
+    printf, lun, freq[i],pair[0,i],pair[1,i], format='(e0,",",e0,",",e0)'
   endfor
 endif else begin
-  for i = 0, ndata-1 do begin
-    printf, lun, dfreq,pair[0,i],format='(e0,e0)'
+  for i = 0L, ndata-1 do begin
+    printf, lun, freq[i],pair[0,i],format='(e0,",",e0)'
   endfor
 endelse
 
 close, lun
+free_lun, lun
 end
 
 
@@ -385,10 +454,11 @@ pro writestackpds,outfile,group=g,ming=ming,maxg=maxg,arrayg=ag, $
                   chan=chan,tkplay=tkplay,help=help,_extra=_ext
 
 ; Take stack pairs in one or more groups and write them to disk as an pds file,
-; one pds frame per pair.  The keywords g, ming and maxg, or ag specify the groups;
+; one pds file per pair.  The keywords g, ming and maxg, or ag specify the groups;
 ; omitting all of these causes all stack pairs to be written.
 
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common pdsBlock,pds
 
 ; Check if a valid set of group-related keywords is set
 
@@ -406,9 +476,9 @@ if n_params() ne 1 or (not gKeywordsOK) or keyword_set(help) then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/tkplay][,/help]'
+  print,'              [,chan=1 or 2][,/help]'
   print,' '
-  print,"    '.csv' output file extension is added if not already present"
+  print,"    'file number and .csv' output file extension is added"
   print,' '
   print,'    Setting keywords g, ming and maxg, or ag writes all pairs in ', $
         'the specified group(s) to an pds file',format='(2a)'
@@ -421,7 +491,7 @@ endif else if size(outfile, /type) ne 7 then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/tkplay][,/help]'
+  print,'              [,chan=1 or 2][,/help]'
   print,'Make sure that outfile is a quoted string!'
   print,' '
   return
@@ -496,13 +566,15 @@ endif else begin
 endelse
 nchan = total(writepol)
 
-; Open the output file
-
-err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
-if err ne 0 then return
+if n_tags(pds) le 0 then begin
+  print, "pds structure not set"
+  return
+endif
 
 ; Go through the stack pair by pair and write out pairs which
 ; are included in one of the specified groups
+
+filenum=1
 
 sformat = '(a,5x,a16,3x,a)'
 iformat = '(a,5x,a16,3x,i0)'
@@ -518,94 +590,23 @@ for n=0L,nstack-1 do begin
 
     ; This pair should be written to disk
 
-    pair = (*stack[n]).spec
-    tags = (*stack[n]).tags
-    extratags = (*stack[n]).extratags
-    ndata = (*stack[n]).ndata
-    ntags = (*stack[n]).ntags
-    nextra = (*stack[n]).nextra
-    tname = (*stack[n]).tname
-    if nchan eq 2 then begin
-      extratags_write = extratags
-      nextra_write = nextra
-    endif else begin
-      splitExtra,chan,extratags,nextra,extratags_write,nextra_write
-    endelse
-
-    ; If requested, fix three tag values (xjcen, jsnr1, jsnr2) so that the output
-    ; is consistent with tkplay, which counts these tags from 1 rather than from 0
-    ;
-    ; Also fix the jcp tag, which tkplay counts (sometimes) from 0 rather than from 1
-
-    if keyword_set(tkplay) then begin
-      tags.xjcen = tags.xjcen + 1L
-      tags.jsnr1 = tags.jsnr1 + 1L
-      tags.jsnr2 = tags.jsnr2 + 1L
-      tags.jcp = tags.jcp - 1L
-      if (tags[0].jcp lt 0 or tags[1].jcp lt 0) then begin
-        print,'ERROR in writestackpds: jcp tags are already [0,1] rather than [1,2]'
-        return
-      endif
-      extratags_write = [extratags_write, extratags_write[0]]
-      extratags_write[nextra_write].format = ''
-      extratags_write[nextra_write].name = ''
-      extratags_write[nextra_write].value = ''
-      extratags[nextra_write].comment = $
-                   '# Conv to   tkplay format ' + systime(/utc) + ' UT'
-      nextra_write = nextra_write + 1L
-    endif
-
-    ; Write the pds header
-
-    printf,lun,'s','type','float',format=sformat
-    printf,lun,'i','ndata',ndata,format=iformat
-    printf,lun,'i','height',nchan,format=iformat
-    printf,lun,'i','width',ndata+ntags,format=iformat
-    printf,lun,'i','size',4,format=iformat
-    printf,lun,'s','machine','SPARC',format=sformat
-    printf,lun,'i','nchan',nchan,format=iformat
-    printf,lun,'i','ntags',ntags,format=iformat
-    printf,lun,'i','nspec',nchan,format=iformat
-    printf,lun,'s','format','RDF_spectrum_1',format=sformat
-    printf,lun,'.'
-
-    ; Write the spectrum and tags (as binary)
-    ; -- write all tags as floating point to be compatible with tkplay
-
-    for ch=1,2 do begin
-      if writepol[ch-1] then begin
-        writeu,lun,swap_endian(pair[ch-1,*], /swap_if_little_endian)
-        for k=0L,ntags-1 do begin
-          writeu,lun,swap_endian(float(tags[ch-1].(k)), /swap_if_little_endian)
-        endfor
-      endif
-    endfor
-
-    ; Write the pds footer
-
-    for k=0L,nextra_write-1 do begin
-      printf,lun,strtrim(string(extratags_write[k],format='(a,5x,a16,3x,a,3x,a)'), 2)
-    endfor
-    printf,lun,'s','target',tname,format=sformat
-    chanstring = ['OC','SC']
-    if nchan eq 1 then printf,lun,'s','polarization',chanstring[chan-1],format=sformat
-    printf,lun,'.'
-
+    outname = string(outfile,filenum,format="(A,'_',I03)")
+    pairpointer = stack[n]
+    writeapdsfile,pairpointer,outname,chan=chan,_extra=_ext
+    filenum = filenum + 1
+    
     nwrite = nwrite + 1L
 
   endif
 endfor
 
 if nchan eq 2 then begin
-  print,'Wrote ',nwrite,' pds frames, each containing 1 OC and 1 SC spectrum, to file ', $
-        outfile,format='(a,i0,2a)'
+  print,'Wrote ',nwrite,' pds files, each containing 1 OC and 1 SC spectrum, ', $
+        format='(a,i0,a)'
 endif else begin
-  print,'Wrote ',nwrite,' pds frames, each containing 1 ',chanstring[chan-1], $
-        ' spectrum, to file ',outfile,format='(a,i0,4a)'
+  print,'Wrote ',nwrite,' pds files, each containing 1 ',chanstring[chan-1], $
+        ' spectrum', format='(a,i0,3a)'
 endelse
-
-close,lun
-free_lun,lun
 
 end
 
@@ -847,3 +848,22 @@ free_lun,lun
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+function qq, str
+;
+; Protect string with quotation marks if it contains a comma and the
+; other kind of quotation mark if it contains a quotation mark,
+;
+
+hasd=strmatch(str, '*"*')
+hasc=strmatch(str, '*,*')
+hass=strmatch(str, "*'*")
+
+if hasd+hass eq 2 then begin
+  message, "Your string, "+str+ " has both kinds of quotes. I don't know what to do."
+end
+
+if hass+hasd+hasc eq 0 then return, str
+
+if hasd then return, "'" + str + "'" else return, '"' + str + '"'
+
+end
