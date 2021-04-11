@@ -23,10 +23,10 @@ if (*loaded).ndata le 2 then begin
   return
 endif
 
-if size(pds) le 0 then begin
+if n_tags(pds) le 0 then begin
   print, "pds structure not set"
   return
-end
+endif
 
 pairpointer = loaded
 
@@ -40,7 +40,7 @@ pro setpds,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,lev
 common pdsBlock,pds
 
 ;default
-if size(pds) eq 0 then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'Planetary Radar Team', level:'Calibrated', bookmark:'AO TX;AO RX'}
+if n_tags(pds) eq 0 then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'Planetary Radar Team', level:'Calibrated', bookmark:'AO TX;AO RX'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
 end
@@ -124,7 +124,7 @@ end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro writeapdsfile,pairpointer,outfile,pds,tablelun,chan=chan
+pro writeapdsfile,pairpointer,outfile,tablelun,chan=chan
 ; This will actually do the writing for one file.
 ; First implement the writing of the data, TODO add a table
 
@@ -137,7 +137,7 @@ pro writeapdsfile,pairpointer,outfile,pds,tablelun,chan=chan
 
 common pdsBlock,pds
 
-if n_params() lt 3 or keyword_set(help) then begin
+if n_params() lt 2 or keyword_set(help) then begin
   print, 'writepdsfile,pair,outfile,pds[,tablelun][,/overwrite][,chan=1 or 2][,/help]'
   return
 endif
@@ -153,11 +153,11 @@ if err ne 0 then return
 if n_elements(chan) eq 0 then begin
   writepol = [1,1]
   threecol = 1
-  nchan = 1
+  nchan = 2
 endif else if chan eq 1 or chan eq 2 then begin
   writepol = (chan eq 1) ? [1,0] : [0,1]
   threecol = 0
-  nchan = 2
+  nchan = 1
 endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
   return
@@ -184,7 +184,7 @@ endelse
 ; convert to ISO. Do start last so we have start times in vars
 jdend = getextral(extratags,'jdend')
 caldat, jdend, mon,day,year,hh,mm,ss
-ss = int(ss + 0.5) ; round to nearest to aboid jd rounding
+ss = fix(ss + 0.5) ; round to nearest to aboid jd rounding
 endstring = timestamp(day=day,hour=hh,min=mm,month=mon,second=ss,year=year,/utc)
 jdstart = getextral(extratags,'jdstart')
 caldat, jdstart, mon,day,year,hh,mm,ss
@@ -213,16 +213,17 @@ printf, lun, 'CW data file,', pds.infile, addcomma
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec']
 for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tname[i]) eq skiptags, count)
-if count gt 0 then continue
-if threecol then begin
-  tn = string(tname[i], format='(a,"_1,")')
-  printf, lun, tn, tags[0].(i), addcomma
-  tn = string(tname[i], format='(a,"_2,")')
-  printf, lun, tn, tags[1].(i), addcomma
-endif else begin
-  tn = string(tname[i], format='(a,",")')
-  printf, lun, tn, tags[chan].(i)
-endelse
+  if count gt 0 then continue
+  if threecol then begin
+    tn = string(tname[i], format='(a,"_1,")')
+    printf, lun, tn, tags[0].(i), addcomma
+    tn = string(tname[i], format='(a,"_2,")')
+    printf, lun, tn, tags[1].(i), addcomma
+  endif else begin
+    tn = string(tname[i], format='(a,",")')
+    printf, lun, tn, tags[chan].(i)
+  endelse
+endfor
 
 ;
 ; and extra tags
