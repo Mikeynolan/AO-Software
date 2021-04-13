@@ -44,8 +44,7 @@ print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
 print, "       sets one or more required values for PDS. Names can be:"
 print, "       infile: OVERRIDE original rdf file in tags"
-print, "       target: OVERRIDE target listed in tags. Format is:"
-print, "               'asteroid,1999KW4'"
+print, "       target: OVERRIDE target listed in tags."
 print, "       pname: Product Name. REQUIRED, no default."
 print, "       ttype: Target Type. Default: 'Asteroid'"
 print, "       author: author XOR editor is REQUIRED"
@@ -201,7 +200,7 @@ endif else begin
 endelse
 
 ; Priority: set value, then rdf value
-mytarget = 'asteroid,'+tname
+mytarget = tname
 if not isnull(pds.target) then mytarget = pds.target
 if isnull(mytarget) then begin
   print, "Target not set in pair or setpds"
@@ -245,7 +244,7 @@ err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
 if err ne 0 then return
 
 ; Construct and print some PDS header strings
-printf, lun, '#Keywords,',addcomma
+printf, lun, '# Keywords,',addcomma
 printf, lun, 'Product Name,',qq(pds.pname),addcomma
 printf, lun, 'Product Description,CW spectrum converted from RDF format',addcomma
 printf, lun, 'Start Time,', startstring,addcomma
@@ -310,6 +309,7 @@ if threecol then begin
   printf, lun, 'frequency,pol1,pol2'
   printf, lun, 'real,real,real'
   printf, lun, 'Hz,,'
+  printf, lun, ',,'
   printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline'
 endif else begin
   printf, lun, 'frequency,pol1'
