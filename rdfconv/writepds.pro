@@ -190,13 +190,14 @@ ndata = (*pairpointer).ndata
 ntags = (*pairpointer).ntags
 tname = (*pairpointer).tname
 nextra = (*pairpointer).nextra
+addcr = string(13B)
 if nchan eq 2 then begin
   extratags_write = extratags
   nextra_write = nextra
-  addcomma = ','
+  addcomma = ',' + addcr
 endif else begin
   splitExtra,chan,extratags,nextra,extratags_write,nextra_write
-  addcomma=''
+  addcomma = addcr
 endelse
 
 ; Priority: set value, then rdf value
@@ -266,10 +267,10 @@ printf, lun, 'Software Version,20210411',addcomma
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)
 nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
-printf, lun, 'File date,', nowstring, addcomma
 ;
 ; Now tags
 ;
+printf, lun, '# Tags,',addcomma
 ; Should allow override
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec']
 tagnames = strlowcase(tag_names(tags[0]))
@@ -277,19 +278,23 @@ for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
   if count gt 0 then continue
   if threecol then begin
-    tn = string(tagnames[i], format='(a,"_1,")')
-    printf, lun, tn, tags[0].(i), addcomma
-    tn = string(tagnames[i], format='(a,"_2,")')
-    printf, lun, tn, tags[1].(i), addcomma
+; can do either columns or _n
+;    tn = string(tagnames[i], format='(a,"_1,")')
+;    printf, lun, tn, tags[0].(i), addcomma
+;    tn = string(tagnames[i], format='(a,"_2,")')
+;    printf, lun, tn, tags[1].(i), addcomma
+     o = string(tagnames[i],tags[0].(i),tags[1].(i),format='(A0,",",G0,",",G0)')
   endif else begin
-    tn = string(tagnames[i], format='(a,",")')
-    printf, lun, tn, tags[chan].(i)
+     o = string(tagnames[i],tags[0].(i),format='(A0,",",G0)')
   endelse
+  printf, lun,o,addcomma
 endfor
 
 ;
 ; and extra tags
 ;
+printf, lun, '# Extra Tags,',addcomma
+printf, lun, 'File date,', nowstring, addcomma
 
 skipextra = ['xmit_pol','tzcorr','timezone']
 for i = 0, nextra-1 do begin
@@ -306,16 +311,16 @@ printf, lun, 'timezone,UTC',addcomma
 
 printf, lun, "# Column Definitions,", addcomma
 if threecol then begin
-  printf, lun, 'frequency,pol1,pol2'
-  printf, lun, 'real,real,real'
-  printf, lun, 'Hz,,'
-  printf, lun, ',,'
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline'
+  printf, lun, 'frequency,pol1,pol2',addcr
+  printf, lun, 'real,real,real',addcr
+  printf, lun, 'Hz,,',addcr
+  printf, lun, ',,',addcr
+  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline',addcr
 endif else begin
-  printf, lun, 'frequency,pol1'
-  printf, lun, 'real,real'
-  printf, lun, 'Hz,'
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline'
+  printf, lun, 'frequency,pol1',addcr
+  printf, lun, 'real,real',addcr
+  printf, lun, 'Hz,',addcr
+  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline',addcr
 endelse
 
 ;
@@ -331,11 +336,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i], format='(e0,",",e0,",",e0)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],format='(e0,",",e0)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,a1)'
   endfor
 endelse
 
