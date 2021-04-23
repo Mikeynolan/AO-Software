@@ -1,0 +1,338 @@
+#!/usr/bin/perl -w
+#use Text::CSV;
+
+#my $csv = Text::CSV->new({ sep_char => ',' });
+
+my $sep = ',';
+my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+
+foreach $file (@ARGV) {
+ my %replace;
+ open(my $fh, "< $file") || die;
+ my $author = '';
+ my $editor = '';
+ my ($cdate,$start,$stopt,$pname,$tname,$bookmark);
+ my $btags = 0;
+ my $bextra = 0;
+ my $bdata = 0;
+ my $tell = 0;
+ my $ntags = 0;
+ my $ontags = 0;
+ my $nextra = 0;
+ my $onextra = 0;
+ my $ndata = 0;
+ my $ondata = 0;
+ my $onlabel = 1;
+ while (<$fh>) {
+  if (! $ondata) { # Could be lots, skip all the parsing
+   $tell = tell $fh;
+   if (/^# Keywords/){
+# Find our how many columns
+    $count = (tr /,//);
+    $ncols = $count + 1;
+    $replace{'XXXNCOLS'} = $ncols;
+    next;
+   } elsif (/^# Tags/) {
+    $btags = $tell;
+    $replace{'XXXTOFFSET'} = $btags;
+    $ontags = 1;
+    $onextra = 0;
+    $ondata = 0;
+    $onlabel = 0; # may need some others - TODO
+    next;
+   } elsif (/^# Extra/) {
+    $bextra = $tell;
+    $replace{'XXXEOFFSET'} = $bextra;
+    $onextra = 1;
+    $ontags = 0;
+    $ondata = 0;
+    next;
+   } elsif (/^# Data/) {
+    $bdata = $tell;
+    $replace{'XXXDOFFSET'} = $bdata;
+    $ondata = 1;
+    $onextra = 0;
+    $ontags = 0;
+    next;
+   } elsif (/^# Column Definitions/) {
+    $onextra = 0;
+    $ontags = 0;
+   } elsif (/^#/) {
+    next;
+   }
+  
+   if ($onlabel) {
+# CSV parser stolen from stackoverflow Uses re set above
+    my @cells;
+    s/\r?\n$//;
+    while(/$re/g) {
+      my $value = defined $1 ? $1 : $2;
+      push @cells, (defined $value ? $value : '');
+    }
+     if ($cells[0] =~ /Product Name/) {
+      $pname = $cells[1];
+      $replace{'XXXPTITLE'} = $pname;
+    } elsif ($cells[0] =~ /Start Time/) {
+      $start = $cells[1];
+      $replace{'XXXSTART'} = $start;
+    } elsif ($cells[0] =~ /Stop Time/) {
+      $stopt = $cells[1];
+      $replace{'XXXSTOP'} = $stopt;
+    } elsif ($cells[0] =~ /Target Name/) {
+      $tname = $cells[1];
+      $replace{'XXXTARGET'} = $tname;
+    } elsif ($cells[0] =~ /Target Type/) {
+      $ttype = $cells[1];
+      $replace{'XXXTTYPE'} = $ttype;
+    } elsif ($cells[0] =~ /Editor/) {
+      $editor = $cells[1];
+      $replace{'XXXEDITOR'} = $editor;
+    } elsif ($cells[0] =~ /Author/) {
+      $author = $cells[1];
+      $replace{'XXXAUTHOR'} = $author;
+    } elsif ($cells[0] =~ /Creation Date/) {
+      $cdate = $cells[1];
+      $replace{'XXXCDATE'} = $cdate;
+      $replace{'XXXYEAR'} = substr($cdate, 0, 4);
+    } elsif ($cells[0] =~ /Observing System Bookmark/) {
+      $bookmark = $cells[1];
+    } elsif ($cells[0] =~ /Original CW data file/) {
+      $rdffile = $cells[1];
+    } elsif ($cells[0] =~ /Software Version/) {
+      $writepdsversion = $cells[1];
+    } # case
+   } # onlabel
+# If we get here, and any of the counters are running, we should count them.
+   if ($ontags) { $ntags++;}
+   if ($onextra) { $nextra++;}
+  } else { # !ondata
+   $ndata++;
+  }
+ } # While fh
+ close $fh;
+#now we have been through the file and know how many of everything there are.
+ $replace{'XXXNTAGS'} = $ntags;
+ $replace{'XXXNEXTRA'} = $nextra;
+ $replace{'XXXNDATA'} = $ndata;
+ $replace{'XXXCSVFILE'} = $file;
+ ($replace{'XXXIDENT'} = $file) =~ s/\./_/g;
+ $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
+ 
+# And do the replace on the template.
+ my $regex = join "|", map { quotemeta } keys %replace;
+ $regex = qr/$regex/;
+
+ open(my $tfh, '< template.xml') || die;
+ ($xmlname = $file) =~ s/\.csv$/.xml/;
+ open (my $xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $tfh;
+ close $xfh;
+
+} # While @ARGV
+
+sub obssys {
+# We need to parse the bookmarks and create a string with the various pieces
+# This is probably easiest to do pretty brute force.
+
+my $book = $_[0];
+# Was a telescope used (telescope and facility.
+# observatories
+my $ao = 0;
+my $gold = 0;
+my $gbt = 0;
+# facilities
+my $ao305 = 0;
+my $dss14 = 0;
+my $dss13 = 0;
+my $gbtt = 0;
+# instruments
+my $aotx = 0;
+my $aorx = 0;
+my $dss14tx = 0;
+my $dss14rx = 0;
+my $sdd13tx = 0;
+my $dss13rx = 0;
+my $gbtrx = 0;
+# which did we use for what
+my $tx = 0;
+my $rx = 0;
+# backends
+my $aori = 0;
+my $pfs = 0;
+
+my %sta= (
+  -9 => 'GBT',
+  -14 => 'DSS-14',
+  -13 => 'DSS-13',
+  -1 => 'Arecibo'
+);
+
+if ($book =~ /AO TX/) {
+ $ao = 1;
+ $ao305 = 1;
+ $tx = -1;
+ $aotx = 1;
+}
+if ($book =~ /AO RX/) {
+ $ao = 1;
+ $ao305 = 1;
+ $aorx = 1;
+ $rx = -1;
+}
+if ($book =~ /AO RI/) {
+ $ao = 1;
+ $aori = 1;
+}
+if ($book =~ /DSS14 TX/) {
+ $gold = 1;
+ $dss14 = 1;
+ $dss14tx = 1;
+ $tx = -14;
+}
+if ($book =~ /DSS14 RX/) {
+ $gold = 1;
+ $dss14 = 1;
+ $dss14rx = 1;
+ $rx = -14;
+}
+if ($book =~ /PFS/) {
+ $pfs = 1;
+}
+if ($book =~ /GBT/) {
+ $gbt = 1;
+ $gbtt = 1;
+ $gbtrx = 1;
+ $rx = -9
+}
+my $sysname;
+if ($tx == $rx) {
+ $sysname="Monostatic " . $sta{$tx} . " Radar";
+} else {
+ $sysname="Bitstatic " . $sta{$tx} . "-" . $sta{$rx} . " Radar";
+}
+$obssys = <<EOT;
+    <Observing_System>
+      <name>$sysname</name>
+EOT
+if ($ao) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory</name>
+        <type>Observatory</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:facility:observatory.arecibo</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($ao305) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>305-m fixed spherical reflecting antenna</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:arecibo.305m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aotx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Planetary Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.trans_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aorx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo 2380 MHz Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($gold) {
+ $obssys .= <<EOT;
+        <name>Goldstone Complex</name>
+        <type>Observatory</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:facility:observatory.goldstone</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>70-m steerable parabolic radio telescope</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:goldstone.dss14_70m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14tx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.recv_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14rx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.trans_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($pfs) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Radar Portable Fast Sampler</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+if ($aori) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory Radar Interface</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+# Close out
+$obssys .= "    </Observing_System>";
+# And add all of the crs
+$obssys =~ s/\n/\r\n/g;
+return $obssys;
+}
+

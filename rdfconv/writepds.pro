@@ -267,6 +267,8 @@ printf, lun, 'Software Version,20210411',addcomma
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)
 nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
+printf, lun, 'Creation Date,', nowstring, addcomma
+
 ;
 ; Now tags
 ;
