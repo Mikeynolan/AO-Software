@@ -1,10 +1,30 @@
 #!/usr/bin/perl -w
 #use Text::CSV;
-
-#my $csv = Text::CSV->new({ sep_char => ',' });
+use Getopt::Std qw(getopts);
+use strict;
+use warnings;
 
 my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+my $file;
+our ($opt_t, $opt_h);
+our $tfh;
+
+getopts('t:h');
+
+if ($opt_h) {
+ print STDERR <<EOT;
+Usage: cwlabel [-t template] [-h] file.csv [file.csv ...]
+    -t:  Use template as a template for the xml. Default is internal template
+    -h:  Print this message.
+EOT
+ exit;
+}
+if ($opt_t) {
+ open($tfh, "<", $opt_t) || die;
+} else {
+ open($tfh, "<", gettemplate()) || die;
+}
 
 foreach $file (@ARGV) {
  my %replace;
@@ -12,6 +32,8 @@ foreach $file (@ARGV) {
  my $author = '';
  my $editor = '';
  my ($cdate,$start,$stopt,$pname,$tname,$bookmark);
+ my ($ncols,$version,$ttype,$rdffile,$xmlname);
+ my $writepdsversion;
  my $btags = 0;
  my $bextra = 0;
  my $bdata = 0;
@@ -28,8 +50,11 @@ foreach $file (@ARGV) {
    $tell = tell $fh;
    if (/^# Keywords/){
 # Find our how many columns
-    $count = (tr /,//);
+    my $count = (tr /,//);
     $ncols = $count + 1;
+    if ($ncols != 3) {
+     print STDERR "The labels for 2-column aren't right yet, you'll need to fix them up\n";
+    }
     $replace{'XXXNCOLS'} = $ncols;
     next;
    } elsif (/^# Tags/) {
@@ -63,6 +88,7 @@ foreach $file (@ARGV) {
   
    if ($onlabel) {
 # CSV parser stolen from stackoverflow Uses re set above
+# Not very fancy but does allow commas inside quotes
     my @cells;
     s/\r?\n$//;
     while(/$re/g) {
@@ -72,6 +98,9 @@ foreach $file (@ARGV) {
      if ($cells[0] =~ /Product Name/) {
       $pname = $cells[1];
       $replace{'XXXPTITLE'} = $pname;
+    } elsif ($cells[0] =~ /Product Version/) {
+      $version = $cells[1];
+      $replace{'XXXVERSION'} = $version;
     } elsif ($cells[0] =~ /Start Time/) {
       $start = $cells[1];
       $replace{'XXXSTART'} = $start;
@@ -122,14 +151,14 @@ foreach $file (@ARGV) {
  my $regex = join "|", map { quotemeta } keys %replace;
  $regex = qr/$regex/;
 
- open(my $tfh, '< template.xml') || die;
+ seek($tfh, 0, 0) || die; #rewind template
+
  ($xmlname = $file) =~ s/\.csv$/.xml/;
  open (my $xfh, "> $xmlname") || die;
  while (<$tfh>) {
   s/($regex)/$replace{$1}/g;
   print $xfh $_;
  }
- close $tfh;
  close $xfh;
 
 } # While @ARGV
@@ -214,7 +243,7 @@ if ($tx == $rx) {
 } else {
  $sysname="Bitstatic " . $sta{$tx} . "-" . $sta{$rx} . " Radar";
 }
-$obssys = <<EOT;
+my $obssys = <<EOT;
     <Observing_System>
       <name>$sysname</name>
 EOT
@@ -334,5 +363,151 @@ $obssys .= "    </Observing_System>";
 # And add all of the crs
 $obssys =~ s/\n/\r\n/g;
 return $obssys;
+}
+
+sub gettemplate {
+#
+# THere are issues both with having this here and with a separate file.
+#
+our $template3 = <<EOT;
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Observational xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.xsd">
+  <Identification_Area>
+    <logical_identifier>urn:nasa:pds:preview:data:XXXIDENT</logical_identifier>
+    <version_id>XXXVERSION</version_id>
+    <title>XXXPTITLE</title>
+    <information_model_version>1.10.0.0</information_model_version>
+    <product_class>Product_Observational</product_class>
+    <Citation_Information>
+      <editor_list>XXXEDITOR</editor_list>
+      <publication_year>XXXYEAR</publication_year>
+      <description>Radar Doppler spectrum converted from RDF format</description>
+    </Citation_Information>
+  </Identification_Area>
+  <Observation_Area>
+    <Time_Coordinates>
+      <start_date_time>XXXSTART</start_date_time>
+      <stop_date_time>XXXSTOP</stop_date_time>
+    </Time_Coordinates>
+    <Primary_Result_Summary>
+      <purpose>Science</purpose>
+      <processing_level>Calibrated</processing_level>
+      <Science_Facets>
+        <discipline_name>Spectroscopy</discipline_name>
+        <facet1>Tabulated</facet1>
+      </Science_Facets>
+      <Science_Facets>
+        <discipline_name>Small Bodies</discipline_name>
+        <facet1>Physical Properties</facet1>
+      </Science_Facets>
+    </Primary_Result_Summary>
+    <Investigation_Area>
+      <name>None</name>
+      <type>Other Investigation</type>
+      <Internal_Reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.none</lid_reference>
+        <reference_type>data_to_investigation</reference_type>
+      </Internal_Reference>
+    </Investigation_Area>
+XXXOBSSYSTEM
+    <Target_Identification>
+      <name>XXXTARGET</name>
+      <type>XXXTTYPE</type>
+    </Target_Identification>
+  </Observation_Area>
+  <File_Area_Observational>
+    <File>
+      <file_name>XXXCSVFILE</file_name>
+      <local_identifier>file</local_identifier>
+      <creation_date_time>XXXCDATE</creation_date_time>
+    </File>
+    <Table_Delimited>
+      <local_identifier>TAGS</local_identifier>
+      <offset unit="byte">XXXTOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <records>XXXNTAGS</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>tag</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Name</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol1</name>
+          <data_type>ASCII_Real</data_type>
+          <description>pol 1 value</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol2</name>
+          <data_type>ASCII_Real</data_type>
+          <description>pol 2 value</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+    <Table_Delimited>
+      <local_identifier>EXTRA_TAGS</local_identifier>
+      <offset unit="byte">XXXEOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <records>XXXNEXTRA</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>tag</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Name</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>value</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Value</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>comment</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Comment</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+    <Table_Delimited>
+      <local_identifier>SPECTRUM</local_identifier>
+      <offset unit="byte">XXXDOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <records>XXXNDATA</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>frequency</name>
+          <data_type>ASCII_Real</data_type>
+          <unit>Hz</unit>
+          <description>Offset from Ephemeris frequency</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol1</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol2</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+  </File_Area_Observational>
+</Product_Observational>
+EOT
+
+return \$template3;
 }
 

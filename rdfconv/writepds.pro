@@ -1,3 +1,4 @@
+forward_function qq
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro writepds,outfile,chan=chan,help=help,_extra=_ext
 
@@ -35,13 +36,14 @@ writeapdsfile,pairpointer,outfile,chan=chan,_extra=_ext
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help
+pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
 
 common pdsBlock,pds
 
 if keyword_set(help) then begin
 print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
+print, "       /reset changes all to the default
 print, "       sets one or more required values for PDS. Names can be:"
 print, "       infile: OVERRIDE original rdf file in tags"
 print, "       target: OVERRIDE target listed in tags."
@@ -50,30 +52,33 @@ print, "       ttype: Target Type. Default: 'Asteroid'"
 print, "       author: author XOR editor is REQUIRED"
 print, "       editor: author XOR editor is REQUIRED"
 print, "       level: Product Processing Level, default is 'Calibrated'"
-print, "       facet: Science Search Facet, default='Tabulated,Structure'"
+print, "       facet: Science Search Facet, default='Tabulated,Physical Properties'"
+print, "       version: Product version. Default is '1.0'"
 print, "       waves: Wavelength range, default = 'Microwave'"
-print, "       bookmark: depending on xmit_sta tag, defaults to"
+print, "       bookmark: override default bookmark string. Depending on xmit_sta
+print, "                 tag, defaults to"
 print, "                 'AO TX;AO RX;AO RI' or"
-print, "                 'DSS14 TX;DSS14 RX;DSS14 CW'"
-print, "       You can clear a value by setting it to '' (empty string)"
+print, "                 'DSS14 TX;DSS14 RX'"
+print, "       You can clear a value by setting it to ''"
 endif
                
-if n_tags(pds) eq 0 then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Calibrated', bookmark:'',facet: 'Tabulated,Structure', waves: 'Microwave'}
+if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Calibrated', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
 end
 if keyword_set(dss14) then begin
   pds.bookmark = 'DSS14 TX;DSS14 RX'
 endif
-if keyword_set(infile) then pds.infile = infile
-if keyword_set(target) then pds.target = target
-if keyword_set(pname) then pds.pname = pname
-if keyword_set(ttype) then pds.ttype = ttype
-if keyword_set(author) then pds.author = author
-if keyword_set(editor) then pds.editor = editor
-if keyword_set(level) then pds.level = level
-if keyword_set(facet) then pds.facet = facet
-if keyword_set(bookmark) then pds.bookmark = bookmark
+if defined(infile) then pds.infile = infile
+if defined(target) then pds.target = target
+if defined(pname) then pds.pname = pname
+if defined(ttype) then pds.ttype = ttype
+if defined(author) then pds.author = author
+if defined(editor) then pds.editor = editor
+if defined(level) then pds.level = level
+if defined(facet) then pds.facet = facet
+if defined(version) then pds.version = version
+if defined(bookmark) then pds.bookmark = bookmark
 if keyword_set(show) then help, pds,/str
 
 end
@@ -222,13 +227,13 @@ xmitsta = getextral(extratags,'xmit_sta')
 xmitpol = getextral(extratags,'xmit_poln')
 if notnull(xmitpol) then polstring='xmit_poln,'+xmitpol
 if xmitsta eq 'Arecibo' then begin
-  if isnull(pds.bookmark) then pds.bookmark='AO TX;AO RX;AO RI'
+  bookmark='AO TX;AO RX;AO RI'
   if isnull(xmitpol) then polstring='xmit_poln,LCP'
 endif else if xmitsta eq 'DSS14' then begin
-  if isnull(pds.bookmark) then pds.bookmark='DSS14 TX;DSS14 RX;DSS14 CW'
+  bookmark='DSS14 TX;DSS14 RX'
+  if isnull(xmitpol) then polstring='xmit_poln,RCP'
 endif
-
-
+if notnull(pds.bookmark) then bookmark=pds.bookmark
 
 ; Get the times Assuming jdstart and end are correct for now.
 ; convert to ISO. Do start last so we have start times in vars
@@ -248,6 +253,7 @@ if err ne 0 then return
 printf, lun, '# Keywords,',addcomma
 printf, lun, 'Product Name,',qq(pds.pname),addcomma
 printf, lun, 'Product Description,CW spectrum converted from RDF format',addcomma
+printf, lun, 'Product Version,',qq(pds.version),addcomma
 printf, lun, 'Start Time,', startstring,addcomma
 printf, lun, 'Stop Time,', endstring, addcomma
 printf, lun, 'Target Name,', qq(mytarget), addcomma
@@ -258,10 +264,10 @@ printf, lun, 'Product Processing Level,', qq(pds.level), addcomma
 printf, lun, 'Science Search Facet,', qq(pds.facet), addcomma
 printf, lun, 'Product Wavelength Ranges,',qq(pds.waves), addcomma
 ; next should be replaced with istruments and telescopes
-printf, lun, 'Observing System Bookmark,', qq(pds.bookmark), addcomma 
+printf, lun, 'Observing System Bookmark,', qq(bookmark), addcomma 
 inf = getextral(extratags,'infile')
 if notnull(pds.infile) then inf = pds.infile
-if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf), addcomma
+if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf), addcomma,format='(A,A,A)'
 printf, lun, 'Software Version,20210411',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
@@ -285,9 +291,9 @@ dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
 ;    printf, lun, tn, tags[0].(i), addcomma
 ;    tn = string(tagnames[i], format='(a,"_2,")')
 ;    printf, lun, tn, tags[1].(i), addcomma
-     o = string(tagnames[i],tags[0].(i),tags[1].(i),format='(A0,",",G0,",",G0)')
+     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),format='(A,",",A,",",A)')
   endif else begin
-     o = string(tagnames[i],tags[0].(i),format='(A0,",",G0)')
+     o = string(tagnames[i],arf(tags[0].(i)),format='(A,",",A)')
   endelse
   printf, lun,o,addcomma
 endfor
@@ -873,4 +879,18 @@ if hass+hasd+hasc eq 0 then return, str
 
 if hasd then return, "'" + str + "'" else return, '"' + str + '"'
 
+end
+
+function arf, number
+;
+;format reals the way I want them.
+;integers should be spelled out up to more digits than G allows.
+if ((number eq long64(number)) and (number lt 1.e16)) then begin
+  text = string(number, format='(i0)')
+endif else begin
+  text = string(number, format='(g0)')
+end
+if not strmatch(text,'*.*') then text = text + '.'
+text = strcompress(text, /rem)
+return, text
 end
