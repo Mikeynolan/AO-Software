@@ -464,7 +464,7 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro writestackpds,outfile,group=g,ming=ming,maxg=maxg,arrayg=ag, $
-                  chan=chan,tkplay=tkplay,help=help,_extra=_ext
+                  chan=chan,firstnum=firstnum,help=help,_extra=_ext
 
 ; Take stack pairs in one or more groups and write them to disk as an pds file,
 ; one pds file per pair.  The keywords g, ming and maxg, or ag specify the groups;
@@ -489,7 +489,7 @@ if n_params() ne 1 or (not gKeywordsOK) or keyword_set(help) then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/help]'
+  print,'              [,chan=1 or 2][firstnum=num][,/help]'
   print,' '
   print,"    'file number and .csv' output file extension is added"
   print,' '
@@ -498,13 +498,15 @@ if n_params() ne 1 or (not gKeywordsOK) or keyword_set(help) then begin
   print,'    -- these three keyword choices are mutually exclusive'
   print,'    Calling writestackpds with none of those keywords set writes ', $
         'all stack pairs to an pds file',format='(2a)'
+  print,'    setting firstnum=num will number the output files beginning at num', $
+        '    instead of the default 001', format='(2a)'
   print,' '
   return
 endif else if size(outfile, /type) ne 7 then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/help]'
+  print,'              [,chan=1 or 2][firstnum=num][,/help]'
   print,'Make sure that outfile is a quoted string!'
   print,' '
   return
@@ -587,7 +589,7 @@ endif
 ; Go through the stack pair by pair and write out pairs which
 ; are included in one of the specified groups
 
-filenum=1
+if (defined(firstnum)) then filenum = long(firstnum) else filenum=1L
 
 sformat = '(a,5x,a16,3x,a)'
 iformat = '(a,5x,a16,3x,i0)'
