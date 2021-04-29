@@ -85,7 +85,7 @@ end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-function getextral,extratags,name,help=help
+function getextral,extratags,name,comment=comment,help=help
 
 ; Returns the value of an extra tag directly from the structure
 ;
@@ -225,13 +225,13 @@ end
 ;
 xmitsta = getextral(extratags,'xmit_sta')
 xmitpol = getextral(extratags,'xmit_poln')
-if notnull(xmitpol) then polstring='xmit_poln,'+xmitpol
+if notnull(xmitpol) then polstring=xmitpol
 if xmitsta eq 'Arecibo' then begin
   bookmark='AO TX;AO RX;AO RI'
-  if isnull(xmitpol) then polstring='xmit_poln,LCP'
+  if isnull(xmitpol) then polstring='LCP'
 endif else if xmitsta eq 'DSS14' then begin
   bookmark='DSS14 TX;DSS14 RX'
-  if isnull(xmitpol) then polstring='xmit_poln,RCP'
+  if isnull(xmitpol) then polstring='RCP'
 endif
 if notnull(pds.bookmark) then bookmark=pds.bookmark
 
@@ -291,29 +291,29 @@ dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
 ;    printf, lun, tn, tags[0].(i), addcomma
 ;    tn = string(tagnames[i], format='(a,"_2,")')
 ;    printf, lun, tn, tags[1].(i), addcomma
-     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),format='(A,",",A,",",A)')
+     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),addcr,format='(A,",",A,",",A,A)')
   endif else begin
-     o = string(tagnames[i],arf(tags[0].(i)),format='(A,",",A)')
+     o = string(tagnames[i],arf(tags[0].(i)),addcomma,format='(A,",",A,A)')
   endelse
-  printf, lun,o,addcomma
+  printf, lun,o
 endfor
 
 ;
 ; and extra tags
 ;
 printf, lun, '# Extra Tags,',addcomma
-printf, lun, 'File date,', nowstring, addcomma
+printf, lun, 'file_date,', nowstring, ',s', addcr
 
 skipextra = ['xmit_pol','tzcorr','timezone']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
   if count gt 0 then continue
-  printf, lun, extratags[i].name, ',', qq(extratags[i].value), addcomma
+  printf, lun, extratags[i].name, ',', qq(extratags[i].value), ',', extratags[i].format,addcr
 endfor
 ;These were fixed up: keep in skiptags
-printf, lun, polstring, addcomma
-printf, lun, 'timezone,UTC',addcomma
+printf, lun, 'xmit_poln,', polstring, ',s', addcr
+printf, lun, 'timezone,UTC,s',addcr
 
 ;Column definitions
 

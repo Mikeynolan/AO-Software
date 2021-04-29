@@ -297,6 +297,7 @@ EOT
 }
 if ($gold) {
  $obssys .= <<EOT;
+      <Observing_System_Component>
         <name>Goldstone Complex</name>
         <type>Observatory</type>
         <Internal_Reference>
@@ -360,8 +361,8 @@ EOT
 }
 # Close out
 $obssys .= "    </Observing_System>";
-# And add all of the crs
-$obssys =~ s/\n/\r\n/g;
+# Make sure each \n has exactly one \r
+$obssys =~ s/(\r)*\n/\r\n/g;
 return $obssys;
 }
 
@@ -470,14 +471,14 @@ XXXOBSSYSTEM
           <description>Tag Value</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>comment</name>
+          <name>format</name>
           <data_type>UTF8_String</data_type>
-          <description>Tag Comment</description>
+          <description>Tag Intended Format</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
     <Table_Delimited>
-      <local_identifier>SPECTRUM</local_identifier>
+      <local_identifier>DOPPLER SPECTRUM</local_identifier>
       <offset unit="byte">XXXDOFFSET</offset>
       <parsing_standard_id>PDS DSV 1</parsing_standard_id>
       <records>XXXNDATA</records>
