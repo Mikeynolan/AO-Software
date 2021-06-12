@@ -85,7 +85,7 @@ end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-function getextral,extratags,name,help=help
+function getextral,extratags,name,comment=comment,help=help
 
 ; Returns the value of an extra tag directly from the structure
 ;
@@ -225,13 +225,13 @@ end
 ;
 xmitsta = getextral(extratags,'xmit_sta')
 xmitpol = getextral(extratags,'xmit_poln')
-if notnull(xmitpol) then polstring='xmit_poln,'+xmitpol
+if notnull(xmitpol) then polstring=xmitpol
 if xmitsta eq 'Arecibo' then begin
   bookmark='AO TX;AO RX;AO RI'
-  if isnull(xmitpol) then polstring='xmit_poln,LCP'
+  if isnull(xmitpol) then polstring='LCP'
 endif else if xmitsta eq 'DSS14' then begin
   bookmark='DSS14 TX;DSS14 RX'
-  if isnull(xmitpol) then polstring='xmit_poln,RCP'
+  if isnull(xmitpol) then polstring='RCP'
 endif
 if notnull(pds.bookmark) then bookmark=pds.bookmark
 
@@ -291,29 +291,29 @@ dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
 ;    printf, lun, tn, tags[0].(i), addcomma
 ;    tn = string(tagnames[i], format='(a,"_2,")')
 ;    printf, lun, tn, tags[1].(i), addcomma
-     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),format='(A,",",A,",",A)')
+     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),addcr,format='(A,",",A,",",A,A)')
   endif else begin
-     o = string(tagnames[i],arf(tags[0].(i)),format='(A,",",A)')
+     o = string(tagnames[i],arf(tags[0].(i)),addcomma,format='(A,",",A,A)')
   endelse
-  printf, lun,o,addcomma
+  printf, lun,o
 endfor
 
 ;
 ; and extra tags
 ;
 printf, lun, '# Extra Tags,',addcomma
-printf, lun, 'File date,', nowstring, addcomma
+printf, lun, 'file_date,', nowstring, ',s', addcr
 
 skipextra = ['xmit_pol','tzcorr','timezone']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
   if count gt 0 then continue
-  printf, lun, extratags[i].name, ',', qq(extratags[i].value), addcomma
+  printf, lun, extratags[i].name, ',', qq(extratags[i].value), ',', extratags[i].format,addcr
 endfor
 ;These were fixed up: keep in skiptags
-printf, lun, polstring, addcomma
-printf, lun, 'timezone,UTC',addcomma
+printf, lun, 'xmit_poln,', polstring, ',s', addcr
+printf, lun, 'timezone,UTC,s',addcr
 
 ;Column definitions
 
@@ -464,7 +464,7 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro writestackpds,outfile,group=g,ming=ming,maxg=maxg,arrayg=ag, $
-                  chan=chan,tkplay=tkplay,help=help,_extra=_ext
+                  chan=chan,firstnum=firstnum,help=help,_extra=_ext
 
 ; Take stack pairs in one or more groups and write them to disk as an pds file,
 ; one pds file per pair.  The keywords g, ming and maxg, or ag specify the groups;
@@ -489,7 +489,7 @@ if n_params() ne 1 or (not gKeywordsOK) or keyword_set(help) then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/help]'
+  print,'              [,chan=1 or 2][firstnum=num][,/help]'
   print,' '
   print,"    'file number and .csv' output file extension is added"
   print,' '
@@ -498,13 +498,15 @@ if n_params() ne 1 or (not gKeywordsOK) or keyword_set(help) then begin
   print,'    -- these three keyword choices are mutually exclusive'
   print,'    Calling writestackpds with none of those keywords set writes ', $
         'all stack pairs to an pds file',format='(2a)'
+  print,'    setting firstnum=num will number the output files beginning at num', $
+        '    instead of the default 001', format='(2a)'
   print,' '
   return
 endif else if size(outfile, /type) ne 7 then begin
   print,' '
   print,'writestackpds,outfile[,/overwrite][,/append]'
   print,'              [,group=g][,ming=ming,maxg=maxg][,arrayg=ag]'
-  print,'              [,chan=1 or 2][,/help]'
+  print,'              [,chan=1 or 2][firstnum=num][,/help]'
   print,'Make sure that outfile is a quoted string!'
   print,' '
   return
@@ -587,7 +589,7 @@ endif
 ; Go through the stack pair by pair and write out pairs which
 ; are included in one of the specified groups
 
-filenum=1
+if (defined(firstnum)) then filenum = long(firstnum) else filenum=1L
 
 sformat = '(a,5x,a16,3x,a)'
 iformat = '(a,5x,a16,3x,i0)'
