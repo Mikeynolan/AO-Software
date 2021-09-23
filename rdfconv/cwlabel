@@ -4,8 +4,10 @@ use Getopt::Std qw(getopts);
 use strict;
 use warnings;
 
+# For the cheezy csv parser
 my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+
 my $file;
 our ($opt_t, $opt_h);
 our $tfh;
@@ -45,6 +47,10 @@ foreach $file (@ARGV) {
  my $ndata = 0;
  my $ondata = 0;
  my $onlabel = 1;
+ my $onheader = 1;
+ my $moreRadar = '';
+ my $rtt;
+ my $txpwr;
  while (<$fh>) {
   if (! $ondata) { # Could be lots, skip all the parsing
    $tell = tell $fh;
@@ -76,6 +82,7 @@ foreach $file (@ARGV) {
     $bdata = $tell;
     $replace{'XXXDOFFSET'} = $bdata;
     $ondata = 1;
+    $onheader = 0;
     $onextra = 0;
     $ontags = 0;
     next;
@@ -86,7 +93,7 @@ foreach $file (@ARGV) {
     next;
    }
   
-   if ($onlabel) {
+   if ($onheader) {
 # CSV parser stolen from stackoverflow Uses re set above
 # Not very fancy but does allow commas inside quotes
     my @cells;
@@ -129,8 +136,14 @@ foreach $file (@ARGV) {
       $rdffile = $cells[1];
     } elsif ($cells[0] =~ /Software Version/) {
       $writepdsversion = $cells[1];
+    } elsif ($cells[0] =~ /rttim/) {
+      $rtt = $cells[1];
+#      $moreRadar .= "        <radar:MCNRADAR_RTT>$rtt<r/adar:MCNRADAR_RTT>\n"
+    } elsif ($cells[0] =~ /trpwr/) {
+      $txpwr = $cells[1];
+#      $moreRadar .= "        <radar:MCNRADAR_TXPOWER>$txpwr</radar:MCNRADAR_TXPOWER>\n"
     } # case
-   } # onlabel
+   } # onheader
 # If we get here, and any of the counters are running, we should count them.
    if ($ontags) { $ntags++;}
    if ($onextra) { $nextra++;}
@@ -146,6 +159,7 @@ foreach $file (@ARGV) {
  $replace{'XXXCSVFILE'} = $file;
  ($replace{'XXXIDENT'} = $file) =~ s/\./_/g;
  $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
+ $replace{'XXXMORERADAR'} = $moreRadar;
  
 # And do the replace on the template.
  my $regex = join "|", map { quotemeta } keys %replace;
@@ -373,7 +387,13 @@ sub gettemplate {
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<Product_Observational xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.xsd">
+<?xml-model href="http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Observational
+ xmlns="http://pds.nasa.gov/pds4/pds/v1"
+ xmlns:radar="http://www.naic.edu/~nolan/pds4/radar/v1"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.xsd
+                     http://www.naic.edu/~nolan/pds4/radar/v1 http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR.xsd">
   <Identification_Area>
     <logical_identifier>urn:nasa:pds:preview:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
@@ -416,6 +436,10 @@ XXXOBSSYSTEM
       <name>XXXTARGET</name>
       <type>XXXTTYPE</type>
     </Target_Identification>
+    <Discipline_Area>
+      <radar:Radar>
+XXXMORERADAR      </radar:Radar>
+    </Discipline_Area>
   </Observation_Area>
   <File_Area_Observational>
     <File>
