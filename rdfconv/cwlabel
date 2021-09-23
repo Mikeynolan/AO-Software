@@ -9,6 +9,7 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
+my $lcfile;
 our ($opt_t, $opt_h);
 our $tfh;
 
@@ -157,7 +158,8 @@ foreach $file (@ARGV) {
  $replace{'XXXNEXTRA'} = $nextra;
  $replace{'XXXNDATA'} = $ndata;
  $replace{'XXXCSVFILE'} = $file;
- ($replace{'XXXIDENT'} = $file) =~ s/\./_/g;
+ $lcfile = lc $file;
+ ($replace{'XXXIDENT'} = $lcfile) =~ s/\./_/g;
  $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
  $replace{'XXXMORERADAR'} = $moreRadar;
  
@@ -502,7 +504,7 @@ XXXMORERADAR      </radar:Radar>
       </Record_Delimited>
     </Table_Delimited>
     <Table_Delimited>
-      <local_identifier>DOPPLER SPECTRUM</local_identifier>
+      <local_identifier>DOPPLER_SPECTRUM</local_identifier>
       <offset unit="byte">XXXDOFFSET</offset>
       <parsing_standard_id>PDS DSV 1</parsing_standard_id>
       <records>XXXNDATA</records>

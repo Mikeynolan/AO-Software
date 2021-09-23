@@ -241,11 +241,11 @@ if notnull(pds.bookmark) then bookmark=pds.bookmark
 jdend = getextral(extratags,'jdend')
 caldat, jdend, mon,day,year,hh,mm,ss
 ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
-endstring = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
+endstring = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
 jdstart = getextral(extratags,'jdstart')
 caldat, jdstart, mon,day,year,hh,mm,ss
 ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
-startstring = string(year,mon,day,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)") 
+startstring = string(year,mon,day,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')") 
 
 err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
 if err ne 0 then return
@@ -273,7 +273,7 @@ printf, lun, 'Software Version,20210411',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)
-nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02)")
+nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
 printf, lun, 'Creation Date,', nowstring, addcomma
 
 ;
