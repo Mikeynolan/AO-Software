@@ -49,7 +49,15 @@ foreach $file (@ARGV) {
  my $ondata = 0;
  my $onlabel = 1;
  my $onheader = 1;
- my $moreRadar = '';
+# This script is CW. 
+ my $moreRadar = '          <radar:observation_purpose>Doppler</radar:observation_purpose>
+';
+ my $txprops = '            <radar:Modulation>
+              <radar:power_modulation>CW</radar:power_modulation>
+              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
+            </radar:Modulation>
+';
+ my $targetprops ='';
  my $rtt;
  my $txpwr;
  while (<$fh>) {
@@ -139,10 +147,10 @@ foreach $file (@ARGV) {
       $writepdsversion = $cells[1];
     } elsif ($cells[0] =~ /rttim/) {
       $rtt = $cells[1];
-#      $moreRadar .= "        <radar:MCNRADAR_RTT>$rtt<r/adar:MCNRADAR_RTT>\n"
+      $targetprops .= "            <radar:roundtrip-lighttime unit=\"s\">$rtt</radar:roundtrip-lighttime>\n";
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1];
-#      $moreRadar .= "        <radar:MCNRADAR_TXPOWER>$txpwr</radar:MCNRADAR_TXPOWER>\n"
+      $txprops .= "            <radar:tx_power unit=\"kW\">$txpwr</radar:tx_power>\n";
     } # case
    } # onheader
 # If we get here, and any of the counters are running, we should count them.
@@ -161,6 +169,8 @@ foreach $file (@ARGV) {
  $lcfile = lc $file;
  ($replace{'XXXIDENT'} = $lcfile) =~ s/\./_/g;
  $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
+ $replace{'XXXTXPROPS'} = $txprops;
+ $replace{'XXXTARGETPROPS'} = $targetprops;
  $replace{'XXXMORERADAR'} = $moreRadar;
  
 # And do the replace on the template.
@@ -417,10 +427,6 @@ our $template3 = <<EOT;
       <purpose>Science</purpose>
       <processing_level>Calibrated</processing_level>
       <Science_Facets>
-        <discipline_name>Spectroscopy</discipline_name>
-        <facet1>Tabulated</facet1>
-      </Science_Facets>
-      <Science_Facets>
         <discipline_name>Small Bodies</discipline_name>
         <facet1>Physical Properties</facet1>
       </Science_Facets>
@@ -440,7 +446,13 @@ XXXOBSSYSTEM
     </Target_Identification>
     <Discipline_Area>
       <radar:Radar>
-XXXMORERADAR      </radar:Radar>
+        <radar:Groundbased_Radar>
+XXXMORERADAR           <radar:Transmitter_Properties>
+XXXTXPROPS          </radar:Transmitter_Properties>
+          <radar:Target_Properties>
+XXXTARGETPROPS          </radar:Target_Properties>
+        </radar:Groundbased_Radar>
+      </radar:Radar>
     </Discipline_Area>
   </Observation_Area>
   <File_Area_Observational>
