@@ -78,7 +78,6 @@ foreach $file (@ARGV) {
     $ontags = 1;
     $onextra = 0;
     $ondata = 0;
-    $onlabel = 0; # may need some others - TODO
     next;
    } elsif (/^# Extra/) {
     $bextra = $tell;
@@ -150,7 +149,8 @@ foreach $file (@ARGV) {
       $targetprops .= "            <radar:roundtrip-lighttime unit=\"s\">$rtt</radar:roundtrip-lighttime>\n";
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1];
-      $txprops .= "            <radar:tx_power unit=\"kW\">$txpwr</radar:tx_power>\n";
+      $txprops .= "<!-- TODO - add units once they are official. -->
+            <radar:tx_power>$txpwr</radar:tx_power>\n";
     } # case
    } # onheader
 # If we get here, and any of the counters are running, we should count them.
@@ -399,13 +399,13 @@ sub gettemplate {
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1G00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
- xmlns:radar="http://www.naic.edu/~nolan/pds4/radar/v1"
+ xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
  xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1A00.xsd
-                     http://www.naic.edu/~nolan/pds4/radar/v1 http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR.xsd">
+                     http://pds.nasa.gov/pds4/radar/v1 http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1G00_1000.xsd">
   <Identification_Area>
     <logical_identifier>urn:nasa:pds:preview:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
@@ -447,7 +447,7 @@ XXXOBSSYSTEM
     <Discipline_Area>
       <radar:Radar>
         <radar:Groundbased_Radar>
-XXXMORERADAR           <radar:Transmitter_Properties>
+XXXMORERADAR          <radar:Transmitter_Properties>
 XXXTXPROPS          </radar:Transmitter_Properties>
           <radar:Target_Properties>
 XXXTARGETPROPS          </radar:Target_Properties>

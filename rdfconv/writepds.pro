@@ -888,12 +888,35 @@ function arf, number
 ;
 ;format reals the way I want them.
 ;integers should be spelled out up to more digits than G allows.
-if ((number eq long64(number)) and (number lt 1.e16)) then begin
+if (abs(number) lt 1.e16) && (number eq long64(number)) then begin
   text = string(number, format='(i0)')
 endif else begin
   text = string(number, format='(g0)')
 end
-if not strmatch(text,'*.*') then text = text + '.'
+if not strmatch(text,'*[0-9].[0-9]*') then begin
+; Fix each of the three things that could be missing.
+  if not strmatch(text, '*.*') then begin
+   pos = strpos(text, 'e')
+   if pos lt 0 then text = text + '.' else begin
+     first = strmid(text, 0, pos)
+     last = strmid(text, pos)
+     text = first + '.' + last
+   endelse
+  endif
+  if not strmatch(text, '*.[0-9]*') then begin
+    pos = strpos(text, '.')
+    first = strmid(text, 0, pos+1)
+    last = strmid(text, pos+1)
+    text = first + '0' + last
+  endif
+  if not strmatch(text, '*[0-9].*') then begin
+    pos = strpos(text, '.')
+    first = strmid(text, 0, pos-1)
+    last = strmid(text, pos)
+    text = first + '0' + last
+  endif
+endif
+  
 text = strcompress(text, /rem)
 return, text
 end
