@@ -57,7 +57,7 @@ int main(int argc,char **argv)
                    if (!(numi1 && numi2)) goto done;  
                 if (numi1 != numi2) fprintf(stderr, "Got %d and %d bytes on rad\n");
 /*  A B* -> a c + b d, b c - a d */
-                 for (i = 0; i < numi1; i+=2) {
+                 for (i = 0; i < numi1*2; i+=2) {
                    outbuf[i]=inbuf1[i]*inbuf2[i] + inbuf1[i+1]*inbuf2[i+1];
                    outbuf[i+1]=inbuf1[i+1]*inbuf2[i] - inbuf1[i]*inbuf2[i+1];
                  }
