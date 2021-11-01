@@ -281,7 +281,7 @@ printf, lun, 'Creation Date,', nowstring, addcomma
 ;
 printf, lun, '# Tags,',addcomma
 ; Should allow override
-skiptags=['iyy','imm','idd','rchour','rcmin','rcsec']
+skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs']
 tagnames = strlowcase(tag_names(tags[0]))
 for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
