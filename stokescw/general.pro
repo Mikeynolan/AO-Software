@@ -189,15 +189,16 @@ return, tags1
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-function blanktags,help=help
+function blanktags,npol=npol,help=help
 
-; Return a blanked two-element vector of tag structures for an OC/SC pair
+; Return a blanked npol-element vector of tag structures for an OC/SC pair
   
 common loadedBlock,loadedi,loaded1,loaded
 
-if n_params() ne 0 or keyword_set(help) then print,'tags1 = blanktags([/help])'
+if n_params() ne 0 or keyword_set(help) then print,'tags1 = blanktags([npol=npol][/help])'
+if not keyword_set(npol) then npol=2
 
-return, replicate(blanktags1(), 2)
+return, replicate(blanktags1(), npol)
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -565,9 +566,9 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 if n_params() ne 1 or keyword_set(help) then begin
   print,'two2one,chan[,stack=n][,/help]'
   return
-endif else if chan ne 1 and chan ne 2 then begin
+endif else if chan lt 1 or chan gt 4 then begin
   print,'two2one,chan[,stack=n][,/help]'
-  print,'ERROR in two2one: Must have chan = 1 (OC) or 2 (SC)'
+  print,'ERROR in two2one: Must have chan = 1 (OC) or 2 (SC) or 3 or 4'
   return
 endif else if n_elements(n) gt 0 then begin
   if nstack eq 0 then begin
@@ -646,13 +647,19 @@ if polstring eq 'OC' then begin
   chan = 1
 endif else if polstring eq 'SC' then begin
   chan = 2
+endif else if polstring eq 'RE' then begin
+  chan = 3
+endif else if polstring eq 'IM' then begin
+  chan = 4
 endif else begin
   print,"ERROR in one2two: Loaded single-channel spectrum has illegal ", $
         "polarization value = '",polstring,"', so the channel can't be determined", $
         format='(4a)'
   return
 endelse
-otherchan = (chan mod 2) + 1
+
+; Can't check them all. If > 1, assume OC is set
+if chan eq 1 then otherchan = 2 else otherchan = 1
 
 ; Since we're changing only one of the two channels, make sure that the
 ; new channel has the same target name, the same number of spectral points,
@@ -716,14 +723,17 @@ endif
 
 ; Create the revised pair and its revised tags
 
-pair = fltarr(2,ndata1)
-tags = blanktags()
-pair[chan-1,*] = (*loaded1).spec
-for k=0L,ntags1-1 do tags[chan-1].(k) = (*loaded1).tags.(k)
+pair = fltarr(npol,ndata1)
+tags = blanktags(npol=npol)
+
+; overwrite them all with the old one if needed then copy new one in
+
 if ndata gt 2 then begin
   pair[otherchan-1,*] = (*loaded).spec[otherchan-1,*]
   for k=0L,ntags1-1 do tags[otherchan-1].(k) = (*loaded).tags[otherchan-1].(k)
 endif
+pair[chan-1,*] = (*loaded1).spec
+for k=0L,ntags1-1 do tags[chan-1].(k) = (*loaded1).tags.(k)
 
 ; Inspect the extra tags of the loaded pair, delete any which are specific to
 ; the channel to be replaced, then merge the remainder with the extra tags of
@@ -738,9 +748,18 @@ if ndata gt 2 then begin
   if chan eq 1 then begin
     chanstring1 = '_OC'
     chanstring2 = '# OC: '
-  endif else begin
+  endif else if chan eq 2 then begin
     chanstring1 = '_SC'
     chanstring2 = '# SC: '
+  endif else if chan eq 3 then begin
+    chanstring1 = '_RE'
+    chanstring2 = '# RE: '
+  endif else if chan eq 4 then begin
+    chanstring1 = '_IM'
+    chanstring2 = '# IM: '
+  endif else begin
+    chanstring1 = 'NONONO'
+    chanstring2 = 'NONONO'
   endelse
   for k=oldnextra-1L,0,-1 do begin
     if (strpos(oldextratags[k].name, chanstring1) ne -1) or $
@@ -748,7 +767,10 @@ if ndata gt 2 then begin
         strpos(oldextratags[k].comment, chanstring2) eq 0)  then $
       deleteextra,(k+1),/silent
   endfor
-  mergeExtra,(*loaded).extratags,(*loaded1).extratags, $
+
+; No good way to merge pols 3 and 4. Just don't.
+
+  if chan lt 3 then mergeExtra,(*loaded).extratags,(*loaded1).extratags, $
              (*loaded).nextra,(*loaded1).nextra,extratags,nextra
 endif else begin
   extratags = (*loaded1).extratags
@@ -768,7 +790,7 @@ pairStruc = {freq:(*loaded1).freq, spec:pair, tags:tags, extratags:extratags, $
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro splice,n_OC,n_SC,keep=keep,silent=silent,help=help
+pro splice,n_OC,n_SC,n_RE,n_IM,keep=keep,silent=silent,help=help
 
 ; Combine an OC and an SC spectrum from the single-channel stack to form a loaded pair,
 ; then delete the two single-channel spectra from the single-channel stack.
@@ -776,9 +798,9 @@ pro splice,n_OC,n_SC,keep=keep,silent=silent,help=help
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
-if n_params() ne 2 or keyword_set(help) then begin
+if n_params() gt 4 or keyword_set(help) then begin
   print,' '
-  print,'splice,n_OC,n_SC[,/keep][,/silent][,/help]'
+  print,'splice,n_OC,n_SC[,n_RE,n_IM][,/keep][,/silent][,/help]'
   print,' '
   print,'Combine an OC and an SC spectrum from the single-channel stack (stack1)'
   print,'       to form a dual-polarization spectral pair, then load this pair'
@@ -797,10 +819,22 @@ endif
 ; Check that the two spectra slated for splicing actually exist 
 ; and have the correct polarizations
 
+npol = n_params()
+
 nOC = long(n_OC)
 nSC = long(n_SC)
-nmin = nOC < nSC
-nmax = nOC > nSC
+if npol gt 2 then nRE = long(n_RE)
+if npol gt 3 then nIM = long(n_IM)
+
+ar = [nOC,nSC]
+if npol gt 2 then ar = [ar, nRE]
+if npol gt 3 then ar = [ar, nIM]
+
+ar = ar[reverse(sort(ar))]
+
+nmin = ar[n_elements(ar) - 1]
+nmax = ar[0]
+
 if nstack1 eq 0 then begin
   print,'ERROR in splice: There are no spectra in the single-channel stack'
   return
@@ -818,6 +852,12 @@ endif else if (*stack1[nOC-1]).pol ne 'OC' then begin
 endif else if (*stack1[nSC-1]).pol ne 'SC' then begin
   print,'ERROR in splice: Spectrum #',nSC,' is not an SC spectrum',format='(a,i0,a)'
   return
+endif else if (*stack1[nRE-1]).pol ne 'RE' then begin
+  print,'ERROR in splice: Spectrum #',nRE,' is not an RE spectrum',format='(a,i0,a)'
+  return
+endif else if (*stack1[nIM-1]).pol ne 'IM' then begin
+  print,'ERROR in splice: Spectrum #',nIM,' is not an IM spectrum',format='(a,i0,a)'
+  return
 endif
 
 ; Store the loaded single-channel spectrum so we can use that "space" and
@@ -825,13 +865,21 @@ endif
 
 storeloaded1 = ptr_new(*loaded1)
 
-; Splice the two channels together to form a new loaded pair
+; Splice the channels together to form a new loaded pair
 
-unload
+unload, npol=npol
 load1,nOC
 one2two
 load1,nSC
 one2two
+if npol gt 2 then begin
+  load1,nRE
+  one2two
+endif
+if npol gt 3 then begin
+  load1,nIM
+  one2two
+endif
 
 ; Reload the single-channel spectrum that was there at the start
 
@@ -851,8 +899,9 @@ endif
 ; within stack1 of the remaining spectrum
 
 if not keyword_set(keep) then begin
-  deletestack1,n=nmax,silent=silent
-  deletestack1,n=nmin,silent=silent
+  for i = 0, npol - 1 do begin
+    deletestack1, n=ar[i],silent=silent
+  endfor
 endif
 
 end
@@ -956,13 +1005,14 @@ pro mergeExtra,extratags1,extratags2,nextra1,nextra2,pair_extratags,pair_nextra
 
 ; Take the "extra" (i.e., rdf footer) tags from two channels of an OC/SC pair
 ; and merge them into a single set of tags with no OC / SC duplication
+; note: There's no good way to do this for pols 3 and 4. Don't try.
 
 etags1 = extratags1
 etags2 = extratags2
 matched2 = intarr(nextra2) ; starts with all zeros ("false"s)
 pair_nextra = 0L
 
-; Go through the extra OC tags looking for SC matches
+; Go through the extra pair1 tags looking for pair2 matches
 
 for n1=0L,nextra1-1 do begin
   nmatch = 0L
@@ -1211,24 +1261,25 @@ endif
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro unload,chan=chan,help=help
+pro unload,chan=chan,npol=npol,help=help
 
 ; Unload the currently loaded pair (i.e., zero things out)
 
 common loadedBlock,loadedi,loaded1,loaded
 
 if n_params() ne 0 or keyword_set(help) then begin
-  print,'unload[,chan=1 or 2][,/help]'
+  print,'unload[,chan=1 .. 4][,npol=npol][,/help]'
   print,'       -- if chan is specified, only the spectrum and tags are', $
         ' reset for that channel',format='(2a)'
   return
 endif
+if not keyword_set(npol) then npol = 2
 
 ; Check which channel(s) to unload
 
 if (n_elements(chan) eq 0) or (n_elements(loaded) eq 0) then begin
   unloadboth = 1
-endif else if (chan eq 1 or chan eq 2) then begin
+endif else if (chan eq 1 or chan eq 2 or chan eq 3 or chan eq 4) then begin
   unloadboth = 0
 endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
@@ -1249,11 +1300,11 @@ if unloadboth then begin
 
   ndata = 2L
   freq = fltarr(ndata)
-  pair = fltarr(2,ndata)
+  pair = fltarr(npol,ndata)
 
   ; Initialize the other pair elements
 
-  tags = blanktags()
+  tags = blanktags(npol=npol)
   ntags = n_tags(tags)
   nextra = ntags
   extratag = {format:'t', name:'', value:'', comment:''}
@@ -1392,10 +1443,10 @@ endif
 
 if n_elements(chan) eq 0 then begin
   loadboth = 1
-endif else if (chan eq 1 or chan eq 2) then begin
+endif else if (chan eq 1 and chan le 4) then begin
   loadboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (all)'
   return
 endelse
 
@@ -1518,6 +1569,8 @@ pro extract,freq=f,spec=s,ndata=nd,tags=t,ntags=nt,tname=tn, $
 
 common loadedBlock,loadedi,loaded1,loaded
 
+channames = ['OC','SC','RE','IM']
+
 extractsome = arg_present(f) or arg_present(s) or arg_present(nd) or arg_present(t) $
                              or arg_present(nt) or arg_present(tn) or arg_present(ex) $
                              or arg_present(nex) or arg_present(p)
@@ -1540,10 +1593,10 @@ endif
 
 if n_elements(chan) eq 0 then begin
   extractboth = 1
-endif else if (chan eq 1 or chan eq 2) then begin
+endif else if (chan ge 1 and chan le 4) then begin
   extractboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
@@ -1557,7 +1610,7 @@ if arg_present(nt) then nt = (*loaded).ntags
 if arg_present(tn) then tn = (*loaded).tname
 if arg_present(ex) then ex = (*loaded).extratags
 if arg_present(nex) then nex = (*loaded).nextra
-if arg_present(p) then p = (chan eq 1) ? 'OC' : 'SC'
+if arg_present(p) then p = channames[chan]
 
 end
 
@@ -1663,10 +1716,10 @@ endif
 
 if n_elements(chan) eq 0 then begin
   changeboth = 1
-endif else if (chan eq 1 or chan eq 2) then begin
+endif else if (chan ge 1 and chan le 2) then begin
   changeboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
@@ -1685,8 +1738,11 @@ fsize = (arg_present(f)) ? n_elements(f) : n_elements((*loaded).freq)
 specinfo = (arg_present(s)) ? size(s) : size((*loaded).spec)
 specdims = specinfo[0]
 specsize = (specdims le 1) ? specinfo[1] : specinfo[2]
-lspecsize = n_elements((*loaded).spec[0,*])
+lspecinfo = size((*loaded).spec)
+lspecdims = lspecinfo[0]
+lspecsize = (lspecdims le 1) ? specinfo[1] : specinfo[2]
 tagsize = (arg_present(t)) ? n_elements(t) : 2L
+ltagsize = n_elements((*loaded).tags[0,*])
 
 ; Go through each argument present, check that there are no mismatches between
 ; dimensions or array lengths.  If mismatches are found, reload the initial
@@ -1728,7 +1784,7 @@ if arg_present(s) then begin
     *loaded = *storeloaded
     ptr_free,storeloaded
     return
-  endif else if changeboth and (specdims le 1) then begin
+  endif else if changeboth and (specdims ne lspecdims) then begin
     print,"ERROR in changespec: Can't replace a two-channel spectral array with a 1-D vector"
     *loaded = *storeloaded
     ptr_free,storeloaded
@@ -1749,7 +1805,7 @@ if arg_present(t) then begin
     *loaded = *storeloaded
     ptr_free,storeloaded
     return
-  endif else if changeboth and (tagsize le 1) then begin
+  endif else if changeboth and (tagsize ne ltagsize) then begin
     print,"ERROR in changespec: Can't replace a two-channel tag-structure vector with a ", $
           "one-channel structure",format='(2a)'
     *loaded = *storeloaded
@@ -1966,10 +2022,10 @@ endif
 
 if n_elements(chan) eq 0 then begin
   pushboth = 1
-endif else if (chan eq 1 or chan eq 2) then begin
+endif else if (chan ge 1 and chan le 4) then begin
   pushboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
