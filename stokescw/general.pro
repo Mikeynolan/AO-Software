@@ -588,7 +588,7 @@ endif else if (*loaded).ndata le 2 then begin
   return
 endif
 
-polstring = ['OC','SC']
+polstring = ['OC','SC','RE','IM']
 
 ; Get some elements of the input pair
 
@@ -643,13 +643,13 @@ endif
 ; Check which polarization channel we're dealing with
 
 polstring = strupcase((*loaded1).pol)
-if polstring eq 'OC' then begin
+if polstring eq 'OC' or polstring eq 'S1' then begin
   chan = 1
-endif else if polstring eq 'SC' then begin
+endif else if polstring eq 'SC' or polstring eq 'S2' then begin
   chan = 2
-endif else if polstring eq 'RE' then begin
+endif else if polstring eq 'RE' or polstring eq 'S3' then begin
   chan = 3
-endif else if polstring eq 'IM' then begin
+endif else if polstring eq 'IM' or polstring eq 'S4' then begin
   chan = 4
 endif else begin
   print,"ERROR in one2two: Loaded single-channel spectrum has illegal ", $
@@ -793,7 +793,7 @@ end
 pro splice,n_OC,n_SC,n_RE,n_IM,keep=keep,silent=silent,help=help
 
 ; Combine an OC and an SC spectrum from the single-channel stack to form a loaded pair,
-; then delete the two single-channel spectra from the single-channel stack.
+; then delete two single-channel spectra from the single-channel stack.
 
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
@@ -827,8 +827,15 @@ if npol gt 2 then nRE = long(n_RE)
 if npol gt 3 then nIM = long(n_IM)
 
 ar = [nOC,nSC]
-if npol gt 2 then ar = [ar, nRE]
-if npol gt 3 then ar = [ar, nIM]
+pols = [(*stack1[nOC-1]).pol,(*stack1[nSC-1]).pol]
+if npol gt 2 then begin
+  ar = [ar, nRE]
+  pols = [pols, (*stack1[nRE-1]).pol]
+endif
+if npol gt 3 then begin
+  ar = [ar, nIM]
+  pols = [pols, (*stack1[nIM-1]).pol]
+endif
 
 ar = ar[reverse(sort(ar))]
 
@@ -846,17 +853,17 @@ endif else if nmax gt nstack1 then begin
   print,'ERROR in splice: Spectrum #',nmax,' is out of the valid stack1 range (1 - ', $
         nstack1,')',format='(a,i0,a,i0,a)'
   return
-endif else if (*stack1[nOC-1]).pol ne 'OC' then begin
-  print,'ERROR in splice: Spectrum #',nOC,' is not an OC spectrum',format='(a,i0,a)'
+endif else if pols[0] ne 'OC' and pols[0] ne 'S1' then begin
+  print,'ERROR in splice: Spectrum #',nOC,' is not an OC or S1 spectrum',format='(a,i0,a)'
   return
-endif else if (*stack1[nSC-1]).pol ne 'SC' then begin
-  print,'ERROR in splice: Spectrum #',nSC,' is not an SC spectrum',format='(a,i0,a)'
+endif else if pols[1] ne 'SC' and pols[1] ne 'S2' then begin
+  print,'ERROR in splice: Spectrum #',nSC,' is not an SC or S2 spectrum',format='(a,i0,a)'
   return
-endif else if (*stack1[nRE-1]).pol ne 'RE' then begin
-  print,'ERROR in splice: Spectrum #',nRE,' is not an RE spectrum',format='(a,i0,a)'
+endif else if pols[2] ne 'RE' and pols[2] ne 'S3' then begin
+  print,'ERROR in splice: Spectrum #',nRE,' is not an RE or S3 spectrum',format='(a,i0,a)'
   return
-endif else if (*stack1[nIM-1]).pol ne 'IM' then begin
-  print,'ERROR in splice: Spectrum #',nIM,' is not an IM spectrum',format='(a,i0,a)'
+endif else if pols[3] ne 'IM' and pols[3] ne 'S4' then begin
+  print,'ERROR in splice: Spectrum #',nIM,' is not an IM or S4 spectrum',format='(a,i0,a)'
   return
 endif
 
@@ -1419,6 +1426,8 @@ pro load,n,chan=chan,help=help
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
+pollist = ['OC','SC','RE','IM']
+
 if n_params() ne 1 or keyword_set(help) then begin
   print,' '
   print,'load,n[,chan=1 or 2][,/help]'
@@ -1466,7 +1475,7 @@ if loadboth then begin
              ntags:(*stack[n-1]).ntags, nextra:(*stack[n-1]).nextra, $
              tname:(*stack[n-1]).tname}
 endif else begin
-  polstring = (chan eq 1) ? 'OC' : 'SC'
+  polstring = pollist[chan-1]
   *loaded1 = {freq:freq, spec:reform((*stack[n-1]).spec[chan-1,*]), $
              tags:(*stack[n-1]).tags[chan-1], $
              extratags:(*stack[n-1]).extratags, ndata:ndata, $

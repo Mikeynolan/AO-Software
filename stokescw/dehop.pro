@@ -16,6 +16,7 @@ function ratioexpectation,fracsigma_numer,fracsigma_denom,rms=rms
 ; positive fluctuations in the ratio.
 ;
 ; This routine is meant to be used for CW dehopping:
+
 ; Assuming that the ratio of noise-free spectrum to background spectrum is
 ; unity prior to subtraction leaves a small positive bias in the
 ; subtracted, normalized spectra, particularly noticeable (several tenths
@@ -539,7 +540,7 @@ zdata = {rec:zdummy.rec, sec:zdummy.sec, color:zdummy.color, $
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro dehop,flipchan=flipchan,help=help,_extra=_ext
+pro dehop,flipchan=flipchan,npol=npol,help=help,_extra=_ext
 
 ; Dehop an OC/SC spectral pair
 ;
@@ -554,7 +555,7 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,' '
   print,'dehop[,/noweight][,/merge OR ,/blocks][,maxf=maxf]    $'
   print,'     [,/nobgfit][,/bias_allow][,degreemax=degreemax]  $'
-  print,'     [,/roundephcorr][,flipchan=flipchan][,/plotfit][,/help]'
+  print,'     [,/roundephcorr][,flipchan=flipchan][,npol=npol][,/plotfit][,/help]'
   print,' '
   print,'      /merge produces one output spectrum for the entire file, ', $
         'rather than one per scan',format='(2a)'
@@ -580,9 +581,19 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,'            xjcen, posfr, nor the frequency vector are changed.  Flipping is'
   print,'            done before any shifting is carried out due to /roundephcorr.'
   print,'            Permitted values are flipchan = 1, 2, or 3 (flip both channels).'
+  print,'      npol sets the number of channels it reads. npol=2 (default) is normal'
+  print,'            OC/SC processing. npol=4 adds the RE and Im Stokes data. Note:'
+  print,'            flipchan must be 0 or 3 if npol=4: you can''t flop the crosses'
   print,'      /plotfit plots the polynomial fit to the background spectrum ', $
         'for each hop of each block',format='(2a)'
   print,' '
+  return
+endif
+
+; Default to standard processing, mainly because file checking is done at a lower level.
+if not keyword_set(npol) then npol=2
+if npol lt 2 or npol gt 4 then begin
+  print 'ERROR: Dehop: npol mist be 2, 3, or 4'
   return
 endif
 
@@ -597,6 +608,10 @@ if not keyword_set(flipchan) then begin
   iqerror_OC = 0
   iqerror_SC = 0
 endif else begin
+  if npol gt 2 and flipchan ne 3 then begin
+    print, "ERROR in dehop: Don't know how to do Stokes with differently-flipped spectra"
+    return
+  endif
   iqerror_OC = (flipchan eq 1 or flipchan eq 3) ? 1 : 0
   iqerror_SC = (flipchan eq 2 or flipchan eq 3) ? 1 : 0
 endelse
@@ -628,14 +643,38 @@ infile = filestem + '.p2' + filesuffix
 dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
 n_SC = nstack1 - (nstack1_start + n_OC)
 
+if npol gt 2 then begin
+
+; Dehop the RE data
+
+infile = filestem + '.p3' + filesuffix
+dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
+n_RE = nstack1 - (nstack1_start + n_SC)
+
+endif
+
+if npol gt 3 then begin
+
+; Dehop the IM data
+
+infile = filestem + '.p4' + filesuffix
+dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
+n_IM = nstack1 - (nstack1_start + n_RE)
+
+endif
+
 ; Decide what to do with the two channels, then do it
 
-processRaw_combineChans,n_OC,n_SC,nstack1_start
+if npol eq 2 then processRaw_combineChans,n_OC,n_SC,nstack1_start
+if npol eq 3 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE
+if npol eq 4 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE,n_IM
 
 ; If everything worked correctly and all output channels were spliced into
 ; OC/SC pairs, reload the single-channel spectrum that was there at the start
 
-if n_OC eq n_SC then *loaded1 = *storeloaded1
+if npol eq 2 then if n_OC eq n_SC then *loaded1 = *storeloaded1 else $
+if npol eq 3 then if n_OC eq n_SC and n_OC eq n_RE then *loaded1 = *storeloaded1 else $
+if npol eq 4 then if n_OC eq n_SC and n_OC eq n_RE and n_OC eq n_IM then *loaded1 = *storeloaded1
 
 ; Reset infile and zfile to their previous values and clean up pointers
 
@@ -1793,13 +1832,15 @@ endif
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro processRaw_combineChans,n_OC,n_SC,nstack1_start
+pro processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE,n_IM
 
 ; After processing hopped or unhopped date, decide what to do with the
 ; OC and SC output spectra sitting in the single-channel stack, then do it
 
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+
+npol = n_params()-1
 
 if n_OC eq 0 and n_SC eq 0 then begin
 
@@ -1808,7 +1849,18 @@ if n_OC eq 0 and n_SC eq 0 then begin
   print,'No output spectra were produced'
   print,' '
 
-endif else if n_OC ne n_SC then begin
+nmin = n_OC < n_SC
+nmax = n_OC > n_SC
+if npol > 2 then begin
+  nmin = nmin < n_RE
+  nmax = nmax > n_RE
+endif
+if npol > 3 then begin
+  nmin = nmin < n_IM
+  nmax = nmax > n_IM
+endif
+
+endif else if nmin ne nmax then begin
 
   ; Problem:  Somehow there are more OC than SC output spectra (or vice versa)
   ; Solution: Just leave them all in the single-channel stack
@@ -1828,7 +1880,10 @@ endif else begin
 
     ; Splice together an OC/SC pair
 
-    splice,(nstack1_start + k + 1),(nstack1_start + k + 1 + n_OC),/keep,/silent
+    if npol eq 2 then splice,(nstack1_start + k + 1),(nstack1_start + k + 1 + n_OC),/keep,/silent
+    if npol eq 3 then splice,(nstack1_start + k + 1),(nstack1_start + k + 1 + n_OC),(nstack1_start + k + 1 + 2*n_OC),/keep,/silent
+    if npol eq 4 then splice,(nstack1_start + k + 1),(nstack1_start + k + 1 + n_OC),(nstack1_start + k + 1 + 2*n_OC),(nstack1_start + k + 1 + 3*n_OC),/keep,/silent
+    
 
     ; If the extra tag for mean Julian date is set, just stick with the OC value.
     ; The two dates could differ to the extent that the two channels have different
@@ -1849,6 +1904,22 @@ endif else begin
     setextraname,'ramean_OC','ramean',/silent
     setextraname,'decmean_OC','decmean',/silent
     setextraname,'biasremoved_OC','biasremoved',/silent
+    if npol gt 2 then begin
+      deleteextra,'jdmean_RE',/silent
+      deleteextra,'calmean_RE',/silent
+      deleteextra,'distmean_RE',/silent
+      deleteextra,'ramean_RE',/silent
+      deleteextra,'decmean_RE',/silent
+      deleteextra,'biasremoved_RE',/silent
+    endif
+    if npol gt 3 then begin
+      deleteextra,'jdmean_IM',/silent
+      deleteextra,'calmean_IM',/silent
+      deleteextra,'distmean_IM',/silent
+      deleteextra,'ramean_IM',/silent
+      deleteextra,'decmean_IM',/silent
+      deleteextra,'biasremoved_IM',/silent
+    endif
 
     ; Push the new spectrum onto the pair stack
     ; (especially important if there are more spectra to come)
@@ -1875,7 +1946,7 @@ endelse
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro nohop_start,hoptouse=hoptouse,flipchan=flipchan,help=help,_extra=_ext
+pro nohop_start,hoptouse=hoptouse,flipchan=flipchan,npol=npol,help=help,_extra=_ext
 
 ; Start processing an OC/SC spectral pair which wasn't hopped,
 ; or else a hopped pair for which you want the raw weighted sum for just one hop color
@@ -1887,6 +1958,13 @@ common param,infile,filestem,filesuffix,npts,nhops,hop1,lbin,rbin,df,dwell,date,
 common azel,zfile,zstem,zdata,n_zdata,tzcorr,outputTimeZone,radec,deldopcorr
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+
+; Default to standard processing, mainly because file checking is done at a lower level.
+if not keyword_set(npol) then npol=2
+if npol lt 2 or npol gt 4 then begin
+  print 'ERROR: Dehop: npol mist be 2, 3, or 4 '
+  return
+endif
 
 if n_params() ne 0 or keyword_set(help) then begin
   print,' '
@@ -1908,6 +1986,10 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,'            xjcen, posfr, nor the frequency vector are changed.  Flipping is'
   print,'            done before any shifting is carried out due to /roundephcorr.'
   print,'            Permitted values are flipchan = 1, 2, or 3 (flip both channels).'
+  print, '     npol sets the number of channels it reads. npol=2 (default) is normal'
+  print,'            OC/SC processing. npol=4 adds the RE and Im Stokes data. Note:'
+  print,'            flipchan must be 0 or 3 if npol=4: you can''t flop the crosses'
+
   print,' '
   return
 endif
@@ -1941,6 +2023,10 @@ if not keyword_set(flipchan) then begin
   iqerror_OC = 0
   iqerror_SC = 0
 endif else begin
+  if npol gt 2 and flipchan ne 3 then begin
+    print, "ERROR in dehop: Don't know how to do Stokes with differently-flipped spectra"
+    return
+  endif
   iqerror_OC = (flipchan eq 1 or flipchan eq 3) ? 1 : 0
   iqerror_SC = (flipchan eq 2 or flipchan eq 3) ? 1 : 0
 endelse
@@ -1972,14 +2058,39 @@ infile = filestem + '.p2' + filesuffix
 nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
 n_SC = nstack1 - (nstack1_start + n_OC)
 
+if npol gt 2 then begin
+
+; Dehop the RE data
+
+infile = filestem + '.p3' + filesuffix
+nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+n_RE = nstack1 - (nstack1_start + n_SC)
+
+endif
+
+if npol gt 3 then begin
+
+; Dehop the IM data
+
+infile = filestem + '.p4' + filesuffix
+nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+n_IM = nstack1 - (nstack1_start + n_RE)
+
+endif
+
+
 ; Decide what to do with the two channels, then do it
 
-processRaw_combineChans,n_OC,n_SC,nstack1_start
+if npol eq 2 then processRaw_combineChans,n_OC,n_SC,nstack1_start
+if npol eq 3 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE
+if npol eq 4 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE,n_IM
 
 ; If everything worked correctly and all output channels were spliced into
 ; OC/SC pairs, reload the single-channel spectrum that was there at the start
 
-if n_OC eq n_SC then *loaded1 = *storeloaded1
+if npol eq 2 then if n_OC eq n_SC then *loaded1 = *storeloaded1 else $
+if npol eq 3 then if n_OC eq n_SC and n_OC eq n_RE then *loaded1 = *storeloaded1 else $
+if npol eq 4 then if n_OC eq n_SC and n_OC eq n_RE and n_OC eq n_IM then *loaded1 = *storeloaded1
 
 infile = ''
 if notnull(filesuffix) then zfile = ''
@@ -2220,7 +2331,9 @@ endfor
 ; Print the measured rms noise and also set the rmsm tag
 ; (rmsm = measured rms noise divided by calculated rms noise)
 
-for ch=1,2 do begin
+npol = n_elements(tags[*,0])
+
+for ch=1,npol do begin
 
   ; Mask out the signal range for this channnel
 
