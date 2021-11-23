@@ -226,13 +226,12 @@ endelse
 
 if (n_elements(chan) eq 0) then begin
   return, tags.(tagnum)
-endif else if (chan eq 1) then begin
-  return, tags[0].(tagnum)
-endif else if (chan eq 2) then begin
-  return, tags[1].(tagnum)
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
-  return, ''
+  if chan lt 1 or chan gt n_elements(tags)
+    print, 'Chan must be >= 1 and <= # of pols: ', n_elements(tags)
+    return, ''
+  endif
+  return, tags[chan-1].(tagnum)
 endelse
 
 end
@@ -2120,7 +2119,7 @@ if keyword_set(help) or n_params() gt 2 or not xrangeOK then begin
   print,'bwsigma is used for bandwidth estimation:'
   print,'   the full bandwidth displayed is the width between the two innermost'
   print,'   points which are bwsigma noise standard deviations above the baseline'
-  print,'   (default = 0  -->  zero-crossing baseline)
+  print,'   (default = 0  -->  zero-crossing baseline)'
   print,'sdev= to input sdev instead of using the stored tag value'
   print,'xtitle is the title used for the x-axis'
   print,"chanstring='OC' or 'SC' is just prepended to screen output"
@@ -2409,7 +2408,7 @@ if keyword_set(help) or n_params() ne 0 then begin
   print,'bwsigma is used for bandwidth estimation:'
   print,'    the full bandwidth displayed is the width between the two innermost'
   print,'    points which are bwsigma noise standard deviations above the baseline'
-  print,'    (default = 0  -->  zero-crossing bandwidth)
+  print,'    (default = 0  -->  zero-crossing bandwidth)'
   print,'sdev= to input sdev for both channels instead of using stored tag values'
   print,'/set  to set the cross section and cross section error tags'
   print,' '
@@ -2422,17 +2421,22 @@ if (*loaded).ndata le 2 then begin
   return
 endif
 
+npol = n_elements((*loaded).spec[*,0])
+
 ; Check which channels to process
 
+  usepol = intarr(4)
 if n_elements(chan) eq 0 then begin
-  usepol = [1,1]
-endif else if chan eq 1 or chan eq 2 then begin
-  usepol = (chan eq 1) ? [1,0] : [0,1]
+  usepol[0:npol-1] = 1
+endif else if chan ge 1 and chan le npol then begin
+  usepol[chan-1] = 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (all)'
   return
 endelse
-polstring = ['OC','SC']
+polstring = ['OC','SC','RE','IM']
+xsecs = fltarr(4)
+xsecerrs=fltarr(4)
 
 ; Store the loaded single-channel spectrum so we can use that "space" and
 ; reload the spectrum later on
@@ -2446,11 +2450,9 @@ tags = (*loaded).tags
 ; Use the user-specified sdev or else the tag value
 
 if n_elements(sdev) gt 0 then begin
-  sdevOC = 1.0*sdev
-  sdevSC = 1.0*sdev
+  sdevs = fltarr(4) + sdev
 endif else begin
-  sdevOC = tags[0].sdev
-  sdevSC = tags[1].sdev
+  sdevs = tags[*].sdev
 endelse
 
 if not keyword_set(cumulative) then cumulative = 0
@@ -2468,24 +2470,24 @@ endif
 
 ; Compute and display the cross sections
 
+didone = 0
+aremore = total(usepol)-1
 print,' '
-if usepol[0] then begin
-  two2one,1
-  xtitlestring = (usepol[1]) ? '' : 'Doppler frequency  (Hz)'
-  xsec1,OCxsec,OCxsecErr,cumulative=cumulative,sdev=sdevOC,set=set, $
-        xtitle=xtitlestring,chanstring='OC',_extra=_ext
-  if n_elements(OCxsec) eq 0 then return
-  if set then one2two
-endif
-if usepol[1] then begin
-  two2one,2
-  xtitlestring = 'Doppler frequency  (Hz)'
-  noerase = (usepol[0]) ? 1 : 0
-  xsec1,SCxsec,SCxsecErr,cumulative=cumulative,sdev=sdevSC,set=set, $
-        xtitle=xtitlestring,chanstring='SC',noerase=noerase,_extra=_ext
-  if n_elements(SCxsec) eq 0 then return
-  if set then one2two
-endif
+for i = 0, npol-1 do begin
+  if usepol[i] then begin
+    two2one,i+1
+    noerase = didone
+    xtitlestring = (aremore) ? '' : 'Doppler frequency  (Hz)'
+    xsec1,MYxsec,MYxsecErr,cumulative=cumulative,sdev=sdevs[i],set=set, $
+          xtitle=xtitlestring,chanstring=chanstrings[i],noerase=noerase,_extra=_ext
+    if n_elements(MYxsec) eq 0 then return
+    xsecs[i] = MYxsec
+    xsecerrs[i] = MYxsecErr
+    if set then one2two
+    didone = 1
+    aremore = aremore - 1
+  endif
+endfor
 
 ; Compute the circular polarization ratio SC/OC
 ;
@@ -2496,7 +2498,11 @@ endif
 
 if usepol[0] and usepol[1] then begin
 
-  sdev_ratio = sdevSC/sdevOC
+  sdev_ratio = sdevs[1]/sdevs[0]
+  OCxsec = xsecs[0]
+  SCxsec = xsecs[1]
+  OCxsecErr = xsecerrs[0]
+  SCxsecErr = xsecerrs[1]
   if SCxsecErr/OCxsecErr lt sdev_ratio then begin
     SCxsecErr = OCxsecErr*sdev_ratio
   endif else begin
@@ -3019,6 +3025,7 @@ endif else begin
   ntags = (*stack[n-1]).ntags
 endelse
 tagnames = strlowcase(tag_names(tags[0]))
+npols = n_elements(tags)
 
 ; Check that tagname is a valid tag name
 
@@ -3035,17 +3042,16 @@ endif
 
 ; Check which channels to display
 
+  printpol = intarr(4)
 if (n_elements(chan) eq 0) then begin
-  printpol = [1,1]
-endif else if (chan eq 1) then begin
-  printpol = [1,0]
-endif else if (chan eq 2) then begin
-  printpol = [0,1]
+  printpol[0:npol-1] = 1
+endif else if (chan gt 1 and chan le npol) then begin
+  printpol[chan] = 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
-polstring = ['OC: ','SC: ']
+polstring = ['OC: ','SC: ','RE: ','IM: ']
 
 ; Display the tag(s)
 
@@ -3061,7 +3067,7 @@ if (tagname eq 'all') then begin
     endfor
     print,' '
     print,printstring
-    for ch=1,2 do begin
+    for ch=1,npol do begin
       if printpol[ch-1] then begin
         printstring = polstring[ch-1] + ' '
         for k=k0,lastOnLine do begin
@@ -3078,7 +3084,7 @@ endif else begin
   ; print one tag value
 
     printstring = tagname + ':'
-    for ch=1,2 do begin
+    for ch=1,npol do begin
       if printpol[ch-1] then begin
         printstring = printstring + '     ' + polstring[ch-1] $
                       + string(tags[ch-1].(tagnum),format=tagformats[tagnum])
@@ -3246,6 +3252,7 @@ endif
 
 tags = (n_elements(n) gt 0) ? (*stack[n-1]).tags : (*loaded).tags
 tagnames = strlowcase(tag_names(tags[0]))
+npol = n_elements(tags)
 
 ; Check that tagname is a valid tag name
 
@@ -3260,30 +3267,32 @@ endelse
 
 ; Check which values to assign to which channel
 
-if n_elements(newvalue) eq 2 then begin
-  chanvalue = [newvalue[0], newvalue[1]]
+if n_elements(newvalue) gt 1 then begin
+  if n_elements(chanvalue) eq npol then chanvalue = newvalue else begin
+    print "ERROR: settag: number of values must be 1 or the same as number or pols", n_elements(chanvalue), npol
+    return
+  endelse
 endif else begin
-  chanvalue = [newvalue[0], newvalue[0]]
+  chanvalue = replicate(newvalue, npol)
 endelse
 
 ; Check which channels to change
 
+  setpol = intarr(npol)
 if (n_elements(chan) eq 0) then begin
-  setpol = [1,1]
-endif else if (chan eq 1) then begin
-  setpol = [1,0]
-endif else if (chan eq 2) then begin
-  setpol = [0,1]
+  setpol = setpol + 1
+endif else if (chan gt 0 and chan le npol) then begin
+  setpol[chan-1] = 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
-polstring = ['OC','SC']
+polstring = ['OC','SC','RE','IM']
 
 ; Change the tag
 
 printstring = ''
-for ch=1,2 do begin
+for ch=1,npol do begin
   if setpol[ch-1] then begin
     oldvalue = tags[ch-1].(tagnum)
     if n_elements(n) eq 0 then begin
@@ -3415,6 +3424,8 @@ if keyword_set(help) or n_params() eq 0 or n_params() gt 3 or $
   return
 endif
 
+chanlist = ['OC','SC','RE','IM']
+
 if not keyword_set(st) then begin
 
   ; Set signal limits for the loaded pair
@@ -3424,6 +3435,7 @@ if not keyword_set(st) then begin
     return
   endif
   nuse = 1L
+  npol = n_elements((*loaded).spec[*,0])
 endif else begin
 
   ; Set signal limits for every pair in the stack
@@ -3433,21 +3445,20 @@ endif else begin
     return
   endif
   nuse = nstack
+  npol = n_elements((*stack[i]).spec[*,0])
 endelse
 
 ; Determine which polarization channels were specified
 
+setpol = intarr(npol)
 if n_elements(chan) eq 0 then begin
-  setpol = [1,1]
+  setpol = setpol + 1
   chanstring = ''
-endif else if chan eq 1 then begin
-  setpol = [1,0]
-  chanstring = 'OC '
-endif else if chan eq 2 then begin
-  setpol = [0,1]
-  chanstring = 'SC '
+endif else if chan ge 1 and chan le npol then begin
+  setpol[chan]-1 = 1
+  chanstring = chanlist[chan-1]
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
@@ -3552,7 +3563,7 @@ for n=0L,nuse-1 do begin
               format='(a,i0,a,i0,a)'
   endif
 
-  for ch=1,2 do begin
+  for ch=1,npol do begin
     if setpol[ch-1] then begin
       if keyword_set(st) then begin
         (*stack[n]).tags[ch-1].jsnr1 = bin1
@@ -4143,6 +4154,7 @@ for n=0L,nuse-1 do begin
   jsnr1 = tags.jsnr1
   jsnr2 = tags.jsnr2
   ndata = useStruc.ndata
+  npol = n_elements(spec[*,0])
   f = (keyword_set(st)) ? posfr*dfreq*(findgen(ndata) - xjcen) : useStruc.freq
   
   ; Assign the left and right limits according to the
@@ -4186,7 +4198,7 @@ for n=0L,nuse-1 do begin
     tags.xjcen = xjcen - bin1
     newjsnr1 = jsnr1 - bin1
     newjsnr2 = jsnr2 - bin1
-    for ch=1,2 do begin
+    for ch=1,npol do begin
       if newjsnr1[ch-1] lt 0 and newjsnr2[ch-1] lt 0 then begin
         print,'WARNING on channel ',ch,' of pair #',n+1, $
               ': Signal range reset to leftmost frequency bin', $
@@ -5281,14 +5293,15 @@ endif else begin
   nuse = nstack
 endelse
 
-; Check which channels to fit 
+; Check which channels to fit
 
+blinepol = intarr(2)
 if (n_elements(chan) eq 0) then begin
-  blinepol = [1,1]
-endif else if chan eq 1 or chan eq 2 then begin
-  blinepol = (chan eq 1) ? [1,0] : [0,1]
+  blinepol = blinepol + 1
+endif else if chan ge 1 and chan le 4 then begin
+  blinepol[chan-1] = 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
@@ -5313,6 +5326,7 @@ for n=0L,nuse-1 do begin
   endelse
   ndata = useStruc.ndata
   tags = useStruc.tags
+  npol = n_elements(useStruct.spec[0,*])
   df = tags[0].dfreq
   posfr = tags[0].posfr
   bin0 = tags[0].xjcen
@@ -5355,7 +5369,7 @@ for n=0L,nuse-1 do begin
   ; Loop through the polarization channels and do the baseline fit(s)
   ; and (if specified) subtraction and division
 
-  for ch=1,2 do begin
+  for ch=1,npol do begin
     if blinepol[ch-1] then begin
 
       ; Get the spectrum and the signal range for this channel,
@@ -5392,7 +5406,8 @@ for n=0L,nuse-1 do begin
             ; initial data reduction and no one wants a record of it.)
 
             fit_coeffs_str = string(float(fit_coeffs), format='(g)')
-            chanflags = (ch eq 1) ? [1,0] : [0,1]
+            chanflags = intarr[npol]
+            chanflags[ch-1] = 1
             for i=0L,ndegree do begin
               etagstem = 'bline_c' + strtrim(i, 2)
               if keyword_set(st) then begin
@@ -5722,14 +5737,13 @@ endif
 
 ; Check which channels to smooth
 
+smoothpol = intarr(4)
 if (n_elements(chan) eq 0) then begin
-  smoothpol = [1,1]
-endif else if (chan eq 1) then begin
-  smoothpol = [1,0]
-endif else if (chan eq 2) then begin
-  smoothpol = [0,1]
+  smoothpol = smoothpol + 1
+endif else if (chan ge 1 and chang le 4 1) then begin
+  smoothpol[chan-1] = 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
   return
 endelse
 
@@ -5750,6 +5764,7 @@ if not keyword_set(st) then begin
   ndata = (*loaded).ndata
   dfreq = (*loaded).tags[0].dfreq
   freq = (*loaded).freq
+  npol = n_elements(*loaded).spec[*,0])
   chanWasSmoothed = [0,0]
 
   ; Proceed according to the type of smoothing requested
@@ -5760,7 +5775,7 @@ if not keyword_set(st) then begin
 
     fwhm = sqrt(2*alog(2)/!DPI)*efb
     fracNoiseReduc = sqrt(efb/dfreq)  ;  fractional noise reduction
-    for ch=1,2 do begin
+    for ch=1,npol do begin
       if smoothpol[ch-1] then begin
         spec = reform((*loaded).spec[ch-1,*])
         sdev = (*loaded).tags[ch-1].sdev
@@ -5788,7 +5803,7 @@ if not keyword_set(st) then begin
     ; If no problem, convolve the filter with the spectra and reduce sdev
 
     if total(filter) gt 0 then begin
-      for ch=1,2 do begin
+      for ch=1,npol do begin
         if smoothpol[ch-1] then begin
           spec = reform((*loaded).spec[ch-1,*])
           sdev = (*loaded).tags[ch-1].sdev
@@ -5825,12 +5840,13 @@ endif else begin
     dfreq = (*stack[k]).tags[0].dfreq
     posfr = (*stack[k]).tags[0].posfr
     xjcen = (*stack[k]).tags[0].xjcen
+    npol = n_elements((*stack[k]).spec[*,0])
     freq = posfr*dfreq*(findgen(ndata) - xjcen)
-    chanWasSmoothed = [0,0]
+    chanWasSmoothed = intarr(npol)
     if keyword_set(gauss) then begin
       fwhm = sqrt(2*alog(2)/!DPI)*efb
       fracNoiseReduc = sqrt(efb/dfreq)
-      for ch=1,2 do begin
+      for ch=1,npol do begin
         if smoothpol[ch-1] then begin
           spec = reform((*stack[k]).spec[ch-1,*])
           sdev = (*stack[k]).tags[ch-1].sdev
@@ -5844,7 +5860,7 @@ endif else begin
       filter = makefilter(efb,n,dfreq,ndata,efb_use)
       fracNoiseReduc = sqrt(efb_use/dfreq)
       if total(filter) gt 0 then begin
-        for ch=1,2 do begin
+        for ch=1,npol do begin
           if smoothpol[ch-1] then begin
             spec = reform((*stack[k]).spec[ch-1,*])
             sdev = (*stack[k]).tags[ch-1].sdev
@@ -6055,14 +6071,12 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 if n_elements(extraformat) eq 0 then extraformat = ''  ; just so it's defined
 if n_elements(extraname) eq 0 then extraname = ''
 if n_elements(extracomment) eq 0 then extracomment = ''
-if n_elements(chanflags) ne 2 then chanflags = [0,0]
-if n_params() eq 3 then chanflags = [1,1]
+if n_elements(chanflags) lt 2 then chanflags = intarr(4)
+if n_params() eq 3 then chanflags = intarr(4)+1
 
 if keyword_set(help) or n_params() lt 3 or n_params() gt 4 $ 
              or size(extraformat, /type) ne 7 or size(extraname, /type) ne 7 $
-             or size(extracomment, /type) ne 7 $
-             or (chanflags[0] ne 0 and chanflags[0] ne 1) $
-             or (chanflags[1] ne 0 and chanflags[1] ne 1) then begin
+             or size(extracomment, /type) ne 7 then begin
   print,' '
   print,'addextra,format,name,value[,chanflags][,comment=comment][,stack=n][,/help]'
   print,'         format, name, and comment must be quoted strings'
@@ -6100,33 +6114,20 @@ endif
 
 ; Construct a new structure containing the extra tag
 
+chanst1 = ['_OC','_SC','_RE','_IM']
+chanst2 = ['# OC: ','# SC: ','# RE: ','#IM: ']
 newcomment = strtrim(extracomment,2)
 if strmid(newcomment,0,1) eq '#' then newcomment = strtrim(strmid(newcomment,1), 2)
 newcomment = (isnull(newcomment)) ? '' : '# ' + newcomment
 newformat = strtrim(extraformat,2)
 newname = strtrim(extraname,2)
-if chanflags[0] and not chanflags[1] then begin
-  if notnull(newname) then begin
-    newname = newname + '_OC'
-  endif else begin
-    if strpos(newcomment,'# OC: ') ne 0 then $
-        newcomment = '# OC: ' + strmid(newcomment,2)
-  endelse
-endif else if chanflags[1] and not chanflags[0] then begin
-  if notnull(newname) then begin
-    newname = newname + '_SC'
-  endif else begin
-    if strpos(newcomment,'# SC: ') ne 0 then $
-        newcomment = '# SC: ' + strmid(newcomment,2)
-  endelse
-endif
+
 valuetype = size(extravalue, /type)
 if valuetype eq 4 or valuetype eq 5 then begin
   newvalue = string(extravalue, format='(f0)')  ;  float or double
 endif else begin
   newvalue = strtrim(extravalue,2)
 endelse
-newextra = {format:newformat, name:newname, value:newvalue, comment:newcomment}
 
 ; Add the new extra tag to the loaded pair or to the specified stack pair
 ;
@@ -6136,29 +6137,38 @@ newextra = {format:newformat, name:newname, value:newvalue, comment:newcomment}
 ; IDL 5.3 is a pain about concatenating anonymous structures, so it has to be
 ; done in a tedious fashion.
 
-if n_elements(n) eq 0 then begin
-  oldStruc = *loaded
-  extratags = reform(oldStruc.extratags)
-  nextra = oldStruc.nextra
-  extratags = [extratags, extratags[0]]
-  for k=0L,3 do extratags[nextra].(k) = newextra.(k)
-  nextra = nextra + 1L
-  newStruc = {freq:oldStruc.freq, spec:oldStruc.spec, tags:oldStruc.tags, $
-              extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
-              nextra:nextra, tname:oldStruc.tname}
-  *loaded = newStruc
+if n_elements(n) eq 0 then oldStruc = *loaded else oldStruc = *stack[n-1]
+extratags = reform(oldStruc.extratags)
+npol = n_elements(oldStruct.spec[*,0])
+nextra = oldStruc.nextra
+#create the tags
+allchan = (total(chanflags) eq npol)
+for i = 1, (allchan) ? 1 : total(chanflags) do
+if total(chanflags) eq npol then begin
+  if notnull(newname) then begin
+    cnewname = newname
+  endif else begin
+    if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
+        cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+  endelse
 endif else begin
-  oldStruc = *stack[n-1]
-  extratags = reform(oldStruc.extratags)
-  nextra = oldStruc.nextra
-  extratags = [extratags, extratags[0]]
-  for k=0L,3 do extratags[nextra].(k) = newextra.(k)
-  nextra = nextra + 1L
-  newStruc = {group:oldStruc.group, spec:oldStruc.spec, tags:oldStruc.tags, $
-              extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
-              nextra:nextra, tname:oldStruc.tname}
-  *stack[n-1] = newStruc
-endelse
+  if notnull(newname) then begin
+    cnewname = newname + chanst1[whichchan[i-1]]
+  endif else begin
+    if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
+        cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+  endelse
+endif
+newextra = {format:newformat, name:cnewname, value:newvalue, comment:cnewcomment}
+extratags = [extratags, extratags[0]]
+for k=0L,3 do extratags[nextra].(k) = newextra.(k)
+nextra = nextra + 1L
+newStruc = {freq:oldStruc.freq, spec:oldStruc.spec, tags:oldStruc.tags, $
+            extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
+            nextra:nextra, tname:oldStruc.tname}
+if n_elements(n) eq 0 then *loaded = newStruc else *stack[n-1] = newStruc
+oldStruct = newStruct
+endfor
 
 end
 

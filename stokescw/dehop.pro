@@ -2331,7 +2331,7 @@ endfor
 ; Print the measured rms noise and also set the rmsm tag
 ; (rmsm = measured rms noise divided by calculated rms noise)
 
-npol = n_elements(tags[*,0])
+npol = n_elements((*loaded).spec[*,0])
 
 for ch=1,npol do begin
 
