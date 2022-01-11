@@ -227,7 +227,7 @@ endelse
 if (n_elements(chan) eq 0) then begin
   return, tags.(tagnum)
 endif else begin
-  if chan lt 1 or chan gt n_elements(tags)
+  if chan lt 1 or chan gt n_elements(tags) then begin
     print, 'Chan must be >= 1 and <= # of pols: ', n_elements(tags)
     return, ''
   endif
@@ -3269,7 +3269,7 @@ endelse
 
 if n_elements(newvalue) gt 1 then begin
   if n_elements(chanvalue) eq npol then chanvalue = newvalue else begin
-    print "ERROR: settag: number of values must be 1 or the same as number or pols", n_elements(chanvalue), npol
+    print, "ERROR: settag: number of values must be 1 or the same as number or pols", n_elements(chanvalue), npol
     return
   endelse
 endif else begin
@@ -3455,7 +3455,7 @@ if n_elements(chan) eq 0 then begin
   setpol = setpol + 1
   chanstring = ''
 endif else if chan ge 1 and chan le npol then begin
-  setpol[chan]-1 = 1
+  setpol[chan-1] = 1
   chanstring = chanlist[chan-1]
 endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
@@ -5740,7 +5740,7 @@ endif
 smoothpol = intarr(4)
 if (n_elements(chan) eq 0) then begin
   smoothpol = smoothpol + 1
-endif else if (chan ge 1 and chang le 4 1) then begin
+endif else if (chan ge 1 and chang le 4) then begin
   smoothpol[chan-1] = 1
 endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
@@ -5764,7 +5764,7 @@ if not keyword_set(st) then begin
   ndata = (*loaded).ndata
   dfreq = (*loaded).tags[0].dfreq
   freq = (*loaded).freq
-  npol = n_elements(*loaded).spec[*,0])
+  npol = n_elements((*loaded).spec[*,0])
   chanWasSmoothed = [0,0]
 
   ; Proceed according to the type of smoothing requested
@@ -6141,33 +6141,33 @@ if n_elements(n) eq 0 then oldStruc = *loaded else oldStruc = *stack[n-1]
 extratags = reform(oldStruc.extratags)
 npol = n_elements(oldStruct.spec[*,0])
 nextra = oldStruc.nextra
-#create the tags
+;create the tags
 allchan = (total(chanflags) eq npol)
-for i = 1, (allchan) ? 1 : total(chanflags) do
-if total(chanflags) eq npol then begin
-  if notnull(newname) then begin
-    cnewname = newname
+for i = 1, (allchan) ? 1 : total(chanflags) do begin
+  if total(chanflags) eq npol then begin
+    if notnull(newname) then begin
+      cnewname = newname
+    endif else begin
+      if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
+          cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+    endelse
   endif else begin
-    if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
-        cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+    if notnull(newname) then begin
+      cnewname = newname + chanst1[whichchan[i-1]]
+    endif else begin
+      if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
+          cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+    endelse
   endelse
-endif else begin
-  if notnull(newname) then begin
-    cnewname = newname + chanst1[whichchan[i-1]]
-  endif else begin
-    if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
-        cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
-  endelse
-endif
-newextra = {format:newformat, name:cnewname, value:newvalue, comment:cnewcomment}
-extratags = [extratags, extratags[0]]
-for k=0L,3 do extratags[nextra].(k) = newextra.(k)
-nextra = nextra + 1L
-newStruc = {freq:oldStruc.freq, spec:oldStruc.spec, tags:oldStruc.tags, $
-            extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
-            nextra:nextra, tname:oldStruc.tname}
-if n_elements(n) eq 0 then *loaded = newStruc else *stack[n-1] = newStruc
-oldStruct = newStruct
+  newextra = {format:newformat, name:cnewname, value:newvalue, comment:cnewcomment}
+  extratags = [extratags, extratags[0]]
+  for k=0L,3 do extratags[nextra].(k) = newextra.(k)
+  nextra = nextra + 1L
+  newStruc = {freq:oldStruc.freq, spec:oldStruc.spec, tags:oldStruc.tags, $
+              extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
+              nextra:nextra, tname:oldStruc.tname}
+  if n_elements(n) eq 0 then *loaded = newStruc else *stack[n-1] = newStruc
+  oldStruct = newStruct
 endfor
 
 end
