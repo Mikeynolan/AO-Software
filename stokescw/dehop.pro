@@ -593,7 +593,7 @@ endif
 ; Default to standard processing, mainly because file checking is done at a lower level.
 if not keyword_set(npol) then npol=2
 if npol lt 2 or npol gt 4 then begin
-  print 'ERROR: Dehop: npol mist be 2, 3, or 4'
+  print, 'ERROR: Dehop: npol mist be 2, 3, or 4'
   return
 endif
 
@@ -649,7 +649,7 @@ if npol gt 2 then begin
 
 infile = filestem + '.p3' + filesuffix
 dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
-n_RE = nstack1 - (nstack1_start + n_SC)
+n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
 
 endif
 
@@ -659,7 +659,7 @@ if npol gt 3 then begin
 
 infile = filestem + '.p4' + filesuffix
 dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
-n_IM = nstack1 - (nstack1_start + n_RE)
+n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
 
 endif
 
@@ -925,7 +925,10 @@ gconst = 871730.0 ; Arecibo (lambda = 0.1259632 m)
 ; (rmsc involves tau, and we don't yet know how many dwells we'll use
 ; in the sum so we don't yet know the integration time)
 
-if n_zdata gt 0 then tsys = (chan eq 1) ? zdata.t1 : zdata.t2 
+if n_zdata gt 0 then begin
+  if chan lt 3 then tsys = (chan eq 1) ? zdata.t1 : zdata.t2 $
+  else tsys = sqrt(zdata.t1 * zdata.t2)
+endif
 
 if noweight or (n_zdata eq 0) then begin
 
@@ -1098,8 +1101,9 @@ common scanInit,r,nout,iblock,nrec_scan,rcsta_min,rcend_max,az1_min,az1_max,az2_
                 ra1_min,ra1_max,ra2_min,ra2_max,ra1_block,ra2_block,dec_block, $
                 ra1_mean,ra2_mean,dec_mean,dec_min,dec_max,rtt_min,rtt_max,blocknumWithinScan
 common blockSpectra,s,sdev_block,rmsc_block,bias_block
+chanstrings = ['OC','SC','RE','IM']
 
-chanstring = (chan eq 1) ? 'OC' : 'SC'
+chanstring = chanstrings[chan-1]
 
 if not keyword_set(nobgfit) then begin
   nobgfit = 0
@@ -1564,6 +1568,7 @@ common scanInit,r,nout,iblock,nrec_scan,rcsta_min,rcend_max,az1_min,az1_max,az2_
 common blockSpectra,s,sdev_block,rmsc_block,bias_block
 
 monthnames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+chanstrings=['OC','SC','RE','IM']
 
 ; Quit if there are no blocks to sum
 
@@ -1748,7 +1753,7 @@ extratags.value = string(indgen(ntags),format='(i0)')
 
 ; Define a string that identifies the polarization
 
-chanstring = (chan eq 1) ? 'OC' : 'SC'
+chanstring = chanstrings[chan-1]
 
 ; Put everything into a structure and load it
 
@@ -1842,23 +1847,23 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
 npol = n_params()-1
 
+nmin = n_OC < n_SC
+nmax = n_OC > n_SC
+if npol gt 2 then begin
+  nmin = nmin < n_RE
+  nmax = nmax > n_RE
+endif
+if npol gt 3 then begin
+  nmin = nmin < n_IM
+  nmax = nmax > n_IM
+endif
+
 if n_OC eq 0 and n_SC eq 0 then begin
 
   ; Problem: No spectra were output!
 
   print,'No output spectra were produced'
   print,' '
-
-nmin = n_OC < n_SC
-nmax = n_OC > n_SC
-if npol > 2 then begin
-  nmin = nmin < n_RE
-  nmax = nmax > n_RE
-endif
-if npol > 3 then begin
-  nmin = nmin < n_IM
-  nmax = nmax > n_IM
-endif
 
 endif else if nmin ne nmax then begin
 
@@ -1962,7 +1967,7 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 ; Default to standard processing, mainly because file checking is done at a lower level.
 if not keyword_set(npol) then npol=2
 if npol lt 2 or npol gt 4 then begin
-  print 'ERROR: Dehop: npol mist be 2, 3, or 4 '
+  print, 'ERROR: Dehop: npol mist be 2, 3, or 4 '
   return
 endif
 
@@ -2063,8 +2068,8 @@ if npol gt 2 then begin
 ; Dehop the RE data
 
 infile = filestem + '.p3' + filesuffix
-nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
-n_RE = nstack1 - (nstack1_start + n_SC)
+nohop_start1,3,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
 
 endif
 
@@ -2073,8 +2078,8 @@ if npol gt 3 then begin
 ; Dehop the IM data
 
 infile = filestem + '.p4' + filesuffix
-nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
-n_IM = nstack1 - (nstack1_start + n_RE)
+nohop_start1,4,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
 
 endif
 
@@ -2153,7 +2158,7 @@ if n_params() ne 1 or keyword_set(help) then begin
   print,'             done before any shifting is carried out due to /roundephcorr.'
   print,' '
   return
-endif else if chan ne 1 and chan ne 2 then begin
+endif else if chan lt 1 or chan gt 4 then begin
   print,' '
   print,'nohop_start1,chan[,hoptouse=hoptouse][,/noweight][,/merge OR ,/blocks]  $'
   print,'                 [,/roundephcorr][,/iqerror][,/silent][,/help]'

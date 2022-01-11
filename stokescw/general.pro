@@ -643,6 +643,7 @@ endif
 ; Check which polarization channel we're dealing with
 
 polstring = strupcase((*loaded1).pol)
+npol = n_elements((*loaded).spec[*,0])
 if polstring eq 'OC' or polstring eq 'S1' then begin
   chan = 1
 endif else if polstring eq 'SC' or polstring eq 'S2' then begin
@@ -768,10 +769,14 @@ if ndata gt 2 then begin
       deleteextra,(k+1),/silent
   endfor
 
-; No good way to merge pols 3 and 4. Just don't.
-
-  if chan lt 3 then mergeExtra,(*loaded).extratags,(*loaded1).extratags, $
+; No good way to merge pols 3 and 4. Just copy it
+  if chan lt 3 then begin
+    mergeExtra,(*loaded).extratags,(*loaded1).extratags, $
              (*loaded).nextra,(*loaded1).nextra,extratags,nextra
+  endif else begin
+    extratags = (*loaded1).extratags
+    nextra = (*loaded1).nextra
+  endelse
 endif else begin
   extratags = (*loaded1).extratags
   nextra = (*loaded1).nextra
@@ -845,26 +850,36 @@ nmax = ar[0]
 if nstack1 eq 0 then begin
   print,'ERROR in splice: There are no spectra in the single-channel stack'
   return
-endif else if nmin lt 1 then begin
+endif 
+if nmin lt 1 then begin
   print,'ERROR in splice: Spectrum #',nmin,' is out of the valid stack1 range (1 - ', $
         nstack1,')',format='(a,i0,a,i0,a)'
   return
-endif else if nmax gt nstack1 then begin
+endif
+if nmax gt nstack1 then begin
   print,'ERROR in splice: Spectrum #',nmax,' is out of the valid stack1 range (1 - ', $
         nstack1,')',format='(a,i0,a,i0,a)'
   return
-endif else if pols[0] ne 'OC' and pols[0] ne 'S1' then begin
+endif
+if pols[0] ne 'OC' and pols[0] ne 'S1' then begin
   print,'ERROR in splice: Spectrum #',nOC,' is not an OC or S1 spectrum',format='(a,i0,a)'
   return
-endif else if pols[1] ne 'SC' and pols[1] ne 'S2' then begin
+endif
+if pols[1] ne 'SC' and pols[1] ne 'S2' then begin
   print,'ERROR in splice: Spectrum #',nSC,' is not an SC or S2 spectrum',format='(a,i0,a)'
   return
-endif else if pols[2] ne 'RE' and pols[2] ne 'S3' then begin
-  print,'ERROR in splice: Spectrum #',nRE,' is not an RE or S3 spectrum',format='(a,i0,a)'
-  return
-endif else if pols[3] ne 'IM' and pols[3] ne 'S4' then begin
-  print,'ERROR in splice: Spectrum #',nIM,' is not an IM or S4 spectrum',format='(a,i0,a)'
-  return
+endif
+if npol gt 2 then begin
+  if pols[2] ne 'RE' and pols[2] ne 'S3' then begin
+    print,'ERROR in splice: Spectrum #',nRE,' is not an RE or S3 spectrum',format='(a,i0,a)'
+    return
+  endif 
+endif
+if npol gt 3 then begin
+  if pols[3] ne 'IM' and pols[3] ne 'S4' then begin
+    print,'ERROR in splice: Spectrum #',nIM,' is not an IM or S4 spectrum',format='(a,i0,a)'
+    return
+  endif
 endif
 
 ; Store the loaded single-channel spectrum so we can use that "space" and
@@ -2567,7 +2582,7 @@ endif else begin
   numformat = '(i4,2x,'
 endelse
 headformatstring = numheadformat + 'a,' + string((maxnamelen-4),format='(i0)') + $
-                   'x,8x,a,7x,a,5x,a,2x,a,2x,a,2x,a,2x,a)'
+                   'x,7x,a,6x,a,5x,a,2x,a,2x,a,2x,a,2x,a,2x,a)'
 
 n_so_far = nfirst - 1
 userreply = ''
@@ -2578,7 +2593,7 @@ while n_so_far lt nstack and userreply ne 'q' and userreply ne 'Q' do begin
 
   print,' '
   print,'Num','Name','Date and time','Zone','npts','dfreq (Hz)','sdev (km^2)', $
-        'phase (deg)','Group',format=headformatstring
+        'phase (deg)','Group','npol',format=headformatstring
 
   ; Display information on each pair
 
@@ -2597,6 +2612,7 @@ while n_so_far lt nstack and userreply ne 'q' and userreply ne 'Q' do begin
     group = (*stack[n]).group
     ndata = (*stack[n]).ndata
     tags = (*stack[n]).tags
+    npol = n_elements((*stack[n]).spec[*,0])
     extratags = (*stack[n]).extratags
     tznum = where(extratags.name eq 'timezone', count)
     if count gt 0 then begin
@@ -2624,10 +2640,10 @@ while n_so_far lt nstack and userreply ne 'q' and userreply ne 'Q' do begin
       sec = 0
     endelse
     formatstring = numformat + nameformat + $
-                   ',3x,i4,1x,a3,1x,i2.2,4x,i2.2,a1,i2.2,a1,i2.2,3x,a3,3x' + $
-                   ',i6,3x,f7.3,3x,' + sdev_format + ',3x,f6.1,5x,i4)'
+                   ',3x,i4,1x,a3,1x,i2.2,2x,i2.2,a1,i2.2,a1,i2.2,3x,a3,3x' + $
+                   ',i6,3x,f7.3,3x,' + sdev_format + ',3x,f6.1,5x,i4,5x,i2)'
     print,n+1,tname,year,month[mon-1],day,hour,':',min,':',sec,timezone, $
-          ndata,dfreq,sdev,phase,group,format=formatstring
+          ndata,dfreq,sdev,phase,group,npol,format=formatstring
   endfor
   n_so_far = n2 + 1
   if n_so_far lt nstack then begin
