@@ -1940,7 +1940,7 @@ endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
   return
 endelse
-chanstrings = ['OC: ','SC: ']
+chanstrings = ['OC: ','SC: ','RE: ','IM: ']
 
 ; Set the defaults for parameters which haven't been specified
 
@@ -2029,7 +2029,7 @@ end
 pro xsec1,xsec,xsecErr,cumulative=cumulative,maxf=maxf,xrange=xrange,        $
           noplot=noplot,noerase=noerase,wide_err=wide_err,base_err=base_err, $
           bwsigma=bwsigma,sdev=sdev,set=set,xtitle=xtitle,                   $
-          chanstring=chanstring,help=help
+          chanstring=chanstring,nopos=nopos,help=help
 
 ; Compute the radar cross section of the loaded single-channel spectrum, along
 ; with its rms uncertainty and several associated parameters
@@ -2041,6 +2041,8 @@ pro xsec1,xsec,xsecErr,cumulative=cumulative,maxf=maxf,xrange=xrange,        $
 ; 2004 Dec 13: Added /cumulative keyword and associated keywords
 ;
 ; 2006 Jun 25: frequency refers to center of bin, not left edge
+;
+; 2022 Jan 12 Added "nopos" if you don't want to truncate at zero
 
 common loadedBlock,loadedi,loaded1,loaded
 
@@ -2268,7 +2270,7 @@ endif
 
 ; Make sure that the cross section isn't negative
 
-xsec = xsec > 0.0
+if not keyword_set(nopos) then xsec = xsec > 0.0
 
 ; Compute the cross section uncertainty, accounting both for random statistical
 ; fluctuations and also for possible systematic (baselining) errors.
@@ -2321,6 +2323,7 @@ print,string1,'dfreq (Hz)    sdev (km^2)    Beq (Hz)    B (Hz)    ', $
       'xsec (km^2) +/- err (km^2)    D (km)    albedo',format='(3a)'
 sdev_format = (_sdev ge 1.0) ? 'f12.4' : 'f12.10'
 xsec_format = (xsec ge 1.0 or xsecErr ge 1.0) ? 'f12.3' : 'f12.10'
+if xsec lt 0 then xsec_format='f12.9'
 formatstring = '(a,1x,f7.3,5x,' + sdev_format + ',3x,f7.2,4x,f7.2,4x,'      $
                + xsec_format + ',4x,' + xsec_format + ',2x,f6.2,5x,f5.3)'
 print,string2,dfreq,_sdev,beq,bw,xsec,xsecErr,diameter,albedo, $
@@ -2434,7 +2437,7 @@ endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (all)'
   return
 endelse
-polstring = ['OC','SC','RE','IM']
+chanstrings = ['OC','SC','RE','IM']
 xsecs = fltarr(4)
 xsecerrs=fltarr(4)
 
@@ -2478,8 +2481,9 @@ for i = 0, npol-1 do begin
     two2one,i+1
     noerase = didone
     xtitlestring = (aremore) ? '' : 'Doppler frequency  (Hz)'
+    nopos = i ge 2 ; negative xsec is fine for RE,IM
     xsec1,MYxsec,MYxsecErr,cumulative=cumulative,sdev=sdevs[i],set=set, $
-          xtitle=xtitlestring,chanstring=chanstrings[i],noerase=noerase,_extra=_ext
+          xtitle=xtitlestring,chanstring=chanstrings[i],noerase=noerase,nopos=nopos,_extra=_ext
     if n_elements(MYxsec) eq 0 then return
     xsecs[i] = MYxsec
     xsecerrs[i] = MYxsecErr
@@ -3025,7 +3029,7 @@ endif else begin
   ntags = (*stack[n-1]).ntags
 endelse
 tagnames = strlowcase(tag_names(tags[0]))
-npols = n_elements(tags)
+npol = n_elements(tags)
 
 ; Check that tagname is a valid tag name
 
@@ -3281,7 +3285,7 @@ endelse
   setpol = intarr(npol)
 if (n_elements(chan) eq 0) then begin
   setpol = setpol + 1
-endif else if (chan gt 0 and chan le npol) then begin
+endif else if (chan gt 0 && chan le npol) then begin
   setpol[chan-1] = 1
 endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
@@ -3406,9 +3410,9 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
 if n_params() eq 0 then mode = -1  ; just so it's defined
 
-if keyword_set(help) or n_params() eq 0 or n_params() gt 3 or $
-     mode lt 0 or mode gt 2 or (mode eq 1 and n_params() eq 1) or $
-     (mode eq 2 and n_params() lt 3) then begin
+if keyword_set(help) || n_params() eq 0 || n_params() gt 3 || $
+     mode lt 0 || mode gt 2 || (mode eq 1 && n_params() eq 1) || $
+     (mode eq 2 && n_params() lt 3) then begin
   print,' '
   print,'siglim,mode[,lim1[,lim2]][,chan=1 or 2][,/stack][,/silent][,/help]'
   print,'set signal limits based on'
@@ -3435,7 +3439,6 @@ if not keyword_set(st) then begin
     return
   endif
   nuse = 1L
-  npol = n_elements((*loaded).spec[*,0])
 endif else begin
 
   ; Set signal limits for every pair in the stack
@@ -3445,16 +3448,15 @@ endif else begin
     return
   endif
   nuse = nstack
-  npol = n_elements((*stack[i]).spec[*,0])
 endelse
 
 ; Determine which polarization channels were specified
 
-setpol = intarr(npol)
+setpol = intarr(4)
 if n_elements(chan) eq 0 then begin
   setpol = setpol + 1
   chanstring = ''
-endif else if chan ge 1 and chan le npol then begin
+endif else if chan ge 1 && chan le 4 then begin
   setpol[chan-1] = 1
   chanstring = chanlist[chan-1]
 endif else begin
@@ -3477,6 +3479,7 @@ for n=0L,nuse-1 do begin
   posfr = tags[0].posfr
   bin0 = tags[0].xjcen
   ndata = useStruc.ndata
+  npol = n_elements(useStruc.spec[*,0])
   f = (keyword_set(st)) ? posfr*df*(findgen(ndata) - bin0) : useStruc.freq
 
   ; Assign the left and right signal limits according to the
@@ -3558,7 +3561,7 @@ for n=0L,nuse-1 do begin
     print,startstring,chanstring,'signal limits to freq. bins ',  $
           bin1,'-',bin2,'  (',f[bin1]-0.5*posfr*df,' Hz to ',f[bin2]+0.5*posfr*df,' Hz)',  $
           format='(3a, i0, a, i0, a, f8.2, a, f8.2, a)'
-    if (mode le 1 and bin0 ne ndata/2) then $
+    if (mode le 1 && bin0 ne ndata/2) then $
         print,'(Full range is bins 0-',ndata-1,', 0 Hz is bin ',bin0,')', $
               format='(a,i0,a,i0,a)'
   endif
@@ -3593,9 +3596,9 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
 if n_params() eq 0 then mode = -1 ; just so it's defined
 
-if keyword_set(help) or n_params() eq 0 or n_params() gt 3 or $
-     mode lt 0 or mode gt 2 or (mode eq 1 and n_params() eq 1) or $
-     (mode eq 2 and n_params() lt 3) then begin
+if keyword_set(help) || n_params() eq 0 || n_params() gt 3 || $
+     mode lt 0 || mode gt 2 || (mode eq 1 && n_params() eq 1) || $
+     (mode eq 2 && n_params() lt 3) then begin
   print,' '
   print,'siglim1,mode[,lim1[,lim2]][,chanstring=chanstring][,/stack][,/silent][,/help]'
   print,'set signal limits based on'
@@ -3729,7 +3732,7 @@ for n=0L,nuse-1 do begin
     print,startstring,chanstring,'signal limits to frequency bins ',  $
           bin1,'-',bin2,'  (',f[bin1]-0.5*posfr*df,' Hz to ',f[bin2]+0.5*posfr*df,' Hz)',   $
           format='(3a, i0, a, i0, a, f8.2, a, f8.2, a)'
-    if (mode le 1 and bin0 ne ndata/2) then $
+    if (mode le 1 && bin0 ne ndata/2) then $
         print,'(Full range is bins 0-',ndata-1,', 0 Hz is bin ',bin0,')', $
               format='(a,i0,a,i0,a)'
   endif
@@ -3760,8 +3763,8 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 if n_params() eq 0 then mode = -1 ; just so it's defined
 
 if keyword_set(help) or n_params() ne 1 or mode lt 0 or mode gt 2                    $
-        or (mode eq 0 and (n_elements(delrange) gt 0 or n_elements(doprange) gt 0))  $
-        or (mode ne 0 and n_elements(delrange) eq 0 and n_elements(doprange) eq 0)   $
+        or (mode eq 0 && (n_elements(delrange) gt 0 or n_elements(doprange) gt 0))  $
+        or (mode ne 0 && n_elements(delrange) eq 0 && n_elements(doprange) eq 0)   $
         then begin
   print,' '
   print,'siglimi,mode[,doprange=doprange][,delrange=delrange][,/stack][,/silent][,/help]'
@@ -3821,7 +3824,7 @@ if not keyword_set(st) then begin
 
   ; Set signal limits for the loaded image
 
-  if (*loadedi).width le 2 and (*loadedi).height le 2 then begin
+  if (*loadedi).width le 2 && (*loadedi).height le 2 then begin
     print,'ERROR in siglimi: No image is loaded'
     return
   endif
@@ -3870,12 +3873,12 @@ for n=0L,nuse-1 do begin
     period = getextrai('period')
     lambda = getextrai('lambda')
   endelse
-  if isnull(delayunit) and notnull(baud) then begin
+  if isnull(delayunit) && notnull(baud) then begin
     if isnull(spb) then spb = 1L
     if isnull(rows_per_baud) then rows_per_baud = spb
     delayunit = baud/rows_per_baud
   endif
-  if notnull(eph_col) and notnull(eph_row) and notnull(dfreq) and notnull(delayunit) then begin
+  if notnull(eph_col) && notnull(eph_row) && notnull(dfreq) && notnull(delayunit) then begin
     f = dfreq*(findgen(width) - eph_col)       ; Doppler (Hz)
     d = delayunit*(findgen(height) - eph_row)  ; delay (usec)
   endif else begin
@@ -4064,11 +4067,11 @@ common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 
 if n_params() eq 0 then mode = -1 ; just so it's defined
 
-if keyword_set(help) or n_params() eq 0 or n_params() gt 3 or $
-     mode lt 0 or mode gt 2 or $
-     (mode eq 0 and (n_params() ne 1 or not keyword_set(st))) or $
-     (mode eq 1 and n_params() eq 1) or $
-     (mode eq 2 and n_params() lt 3) then begin
+if keyword_set(help) or n_params() eq 0 or n_params() gt 3 || $
+     mode lt 0 or mode gt 2 || $
+     (mode eq 0 && (n_params() ne 1 || not keyword_set(st))) || $
+     (mode eq 1 && n_params() eq 1) || $
+     (mode eq 2 && n_params() lt 3) then begin
   print,' '
   print,'vignette,mode[,lim1[,lim2]][,/stack][,/help]'
   print,' '
@@ -4154,7 +4157,7 @@ for n=0L,nuse-1 do begin
   jsnr1 = tags.jsnr1
   jsnr2 = tags.jsnr2
   ndata = useStruc.ndata
-  npol = n_elements(spec[*,0])
+  npol = n_elements(pair[*,0])
   f = (keyword_set(st)) ? posfr*dfreq*(findgen(ndata) - xjcen) : useStruc.freq
   
   ; Assign the left and right limits according to the
@@ -4199,13 +4202,13 @@ for n=0L,nuse-1 do begin
     newjsnr1 = jsnr1 - bin1
     newjsnr2 = jsnr2 - bin1
     for ch=1,npol do begin
-      if newjsnr1[ch-1] lt 0 and newjsnr2[ch-1] lt 0 then begin
+      if newjsnr1[ch-1] lt 0 && newjsnr2[ch-1] lt 0 then begin
         print,'WARNING on channel ',ch,' of pair #',n+1, $
               ': Signal range reset to leftmost frequency bin', $
               format='(a,i0,a)'
         newjsnr1[ch-1] = 0L
         newjsnr2[ch-1] = 0L
-      endif else if newjsnr1[ch-1] ge ndata and newjsnr2[ch-1] ge ndata then begin
+      endif else if newjsnr1[ch-1] ge ndata && newjsnr2[ch-1] ge ndata then begin
         print,'WARNING on channel ',ch,' of pair #',n+1, $
               ': Signal range reset to rightmost frequency bin', $
               format='(a,i0,a,i0,a)'
@@ -5217,6 +5220,14 @@ pro bline,degree,omitf=farray,chan=chan,stack=st,nosubtract=nosub, $
 ; Modified 6/25/05 to recognize that frequency *already* refers to the center
 ; of each bin, not to the left edge
 
+; Modified 01/11/22 For stokes: There is no offset to compute, we have to
+; use the OC and SC ones. This is an unfortunate non-generalization that
+; might be fixed with some more flags. However, this routine already knows
+; that dividing is in the calibration step, so OK, I guess.
+; So for stokes, it does the fit for the subtraction, but the division
+; is sqrt(base_OC * base_SC)
+;
+
  
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
@@ -5295,7 +5306,7 @@ endelse
 
 ; Check which channels to fit
 
-blinepol = intarr(2)
+blinepol = intarr(4)
 if (n_elements(chan) eq 0) then begin
   blinepol = blinepol + 1
 endif else if chan ge 1 and chan le 4 then begin
@@ -5326,7 +5337,7 @@ for n=0L,nuse-1 do begin
   endelse
   ndata = useStruc.ndata
   tags = useStruc.tags
-  npol = n_elements(useStruct.spec[0,*])
+  npol = n_elements(useStruc.spec[*,0])
   df = tags[0].dfreq
   posfr = tags[0].posfr
   bin0 = tags[0].xjcen
@@ -5417,6 +5428,14 @@ for n=0L,nuse-1 do begin
               endelse
             endfor
           endif else begin
+; Stokes stuff
+            if ch eq 1 then xxbase = double(baseline)
+            if ch eq 2 then begin
+              xxbase = float(sqrt(xxbase * double(baseline)))
+              xxbase[where(~finite(xxbase),/null)] = -1
+            endif
+            if ch gt 2 and total(blinepol) gt 1 then baseline = xxbase
+; end of Stokes stuff
             not_pos = where(baseline le 0.0, count)
             if count gt 0 then begin
               print,startstring,"Channel ",ch, $
@@ -11481,7 +11500,7 @@ endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
   return
 endelse
-chanstrings = ['OC: ','SC: ']
+chanstrings = ['OC: ','SC: ','RE: ','IM: ']
 
 print,' '
 
@@ -12071,7 +12090,7 @@ endif else begin
   print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
   return
 endelse
-chanstrings = ['OC: ','SC: ']
+chanstrings = ['OC: ','SC: ','RE: ','IM: ']
 
 ; Get the necessary elements of the structure
 ; whose parameters are to be displayed

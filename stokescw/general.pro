@@ -724,15 +724,21 @@ endif
 
 ; Create the revised pair and its revised tags
 
-pair = fltarr(npol,ndata1)
-tags = blanktags(npol=npol)
+;pair = fltarr(npol,ndata1)
+;tags = blanktags(npol=npol)
 
 ; overwrite them all with the old one if needed then copy new one in
 
 if ndata gt 2 then begin
-  pair[otherchan-1,*] = (*loaded).spec[otherchan-1,*]
-  for k=0L,ntags1-1 do tags[otherchan-1].(k) = (*loaded).tags[otherchan-1].(k)
-endif
+;  pair[otherchan-1,*] = (*loaded).spec[otherchan-1,*]
+;  for k=0L,ntags1-1 do tags[otherchan-1].(k) = (*loaded).tags[otherchan-1].(k)
+  pair = (*loaded).spec
+  tags = (*loaded).tags
+endif else begin
+  pair = fltarr(npol,ndata1)
+  tags = blanktags(npol=npol)
+endelse
+
 pair[chan-1,*] = (*loaded1).spec
 for k=0L,ntags1-1 do tags[chan-1].(k) = (*loaded1).tags.(k)
 
@@ -1108,8 +1114,18 @@ endif else if chan eq 2 then begin
   otherchanstring1 = '_OC'
   chanstring2 = '# SC: '
   otherchanstring2 = '# OC: '
+endif else if chan eq 3 then begin
+  chanstring1 = '_RE'
+  otherchanstring1 = '_RE'
+  chanstring2 = '# RE: '
+  otherchanstring2 = '# RE: '
+endif else if chan eq 4 then begin
+  chanstring1 = '_IM'
+  otherchanstring1 = '_IM'
+  chanstring2 = '# SC: '
+  otherchanstring2 = '# IM: '
 endif else begin
-  print,'ERROR in splitExtra: Must have chan = 1 (OC) or 2 (SC)'
+  print,'ERROR in splitExtra: Must have chan = 1 (OC) or 2 (SC) or 3 or 4'
   return
 endelse
 

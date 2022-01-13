@@ -448,28 +448,34 @@ endif
 
 ; Check which channel(s) to write
 
+polstrings = ['S4','S3','S2','S1','NA','OC','SC','RE','IM']
+plotpol = [0,0,0,0,0]
 if not keyword_set(chan) then begin
-  plotpol = [1,1]
-endif else if chan eq 1 or chan eq 2 then begin
-  plotpol = (chan eq 1) ? [1,0] : [0,1]
+  plotpol = [1,1,0,0,0]
+endif else begin
   if keyword_set(separate) then begin
     print,"ERROR in plotsum: Can't set /separate if 'chan' keyword is used"
     return
   endif
-endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
-  return
+  if chan eq 1 or chan eq 2  then begin
+    plotpol[chan-1] = 1
+  endif else plotpol[4] = 1
 endelse
+
 nplots = (keyword_set(separate)) ? total(plotpol) : 1L
 
 ; Get some elements of the loaded pair
 
 f = (*loaded).freq
+npol = n_elements((*loaded).spec[*,0])
 oc = reform((*loaded).spec[0,*])
 sc = reform((*loaded).spec[1,*])
+if npol gt 2 then re = reform((*loaded).spec[2,*])
+if npol gt 3 then im = reform((*loaded).spec[3,*])
 tags = (*loaded).tags
 oc_sdev = tags[0].sdev
 sc_sdev = tags[1].sdev
+xx_sdev = sqrt(oc_sdev * sc_sdev)
 df = tags[0].dfreq
 posfr = tags[0].posfr
 bin0 = tags[0].xjcen
@@ -477,22 +483,55 @@ ndata = (*loaded).ndata
 
 ; Express in absolute units if desired
 
+; For stokes, need rcs
+if keyword_set(chan) && chan lt 0 then rcs = 1
+
 if keyword_set(rcs) then begin
   oc = oc * oc_sdev / df
   sc = sc * sc_sdev / df
+  if npol gt 2 then re = re * xx_sdev / df
+  if npol gt 3 then begin
+    im = im * xx_sdev / df
+    S1 = oc + sc
+    S2 = 2 * re
+    S3 = -2 * im
+    S4 = oc - sc
+  endif
 endif
 
 ; Smooth the spectra if desired
 
 oc2 = oc
 sc2 = sc
+if npol gt 2 then re2 = re
+if npol gt 3 then begin
+  im2 = im
+  if keyword_set(rcs) then begin
+    S12 = S1
+    S22 = S2
+    S32 = S3
+    S42 = S4
+  endif
+endif
 if n_elements(smooth) gt 0 then begin
   if smooth ge 2 then begin
     oc2 = smooth(oc2,smooth)
     sc2 = smooth(sc2,smooth)
+    if npol gt 2 then re2 = smooth(re2,smooth)
+    if npol gt 3 then begin
+      im2 = smooth(im2,smooth)
+      if keyword_set(rcs) then begin
+        S12 = smooth(S12,smooth)
+        S22 = smooth(S22,smooth)
+        S32 = smooth(S32,smooth)
+        S42 = smooth(S42,smooth)
+      endif
+    endif
     if not keyword_set(rcs) then begin
       oc2 = oc2*sqrt(smooth)
       sc2 = sc2*sqrt(smooth)
+      if npol gt 2 then re2 = re2*sqrt(smooth)
+      if npol gt 3 then im2 = im2*sqrt(smooth)
     endif
   endif
 endif
@@ -550,8 +589,23 @@ if total(plotpol) eq 2 then begin
   plottedvalues = [oc2[bin1:bin2], sc2[bin1:bin2]]
 endif else if chan eq 1 then begin
   plottedvalues = oc2[bin1:bin2]
-endif else begin
+endif else if chan eq 2 then begin
   plottedvalues = sc2[bin1:bin2]
+endif else if chan eq 3 then begin
+  plottedvalues = re2[bin1:bin2]
+endif else if chan eq 4 then begin
+  plottedvalues = im2[bin1:bin2]
+endif else if chan eq -1 then begin
+  plottedvalues = S12[bin1:bin2]
+endif else if chan eq -2 then begin
+  plottedvalues = S22[bin1:bin2]
+endif else if chan eq -3 then begin
+  plottedvalues = S32[bin1:bin2]
+endif else if chan eq -4 then begin
+  plottedvalues = S42[bin1:bin2]
+endif else begin
+  printf, 'No channels to plot'
+  return
 endelse
 maxy = max(plottedvalues)
 miny = min(plottedvalues)
@@ -628,6 +682,16 @@ if plotpol[1] and (keyword_set(separate) or not plotpol[0]) then begin
     oplot,[0,0],[sc_sd_miny,sc_sd_maxy],thick=2
   endif
   xyouts,xlabel,ylabel,'SC',alignment=0.5,charsize=label_charsize
+endif
+if plotpol[4] then begin
+  plot,f[bin1:bin2],plottedvalues,xrange=xr,yrange=[miny,maxy], $
+       xtitle=xtitlestring[0],ytitle=ytitlestring, $
+       charsize=axis_charsize,_extra=_ext
+  if miny lt 0 and maxy gt 0 then oplot,[fmin,fmax],[0,0]
+  if (miny lt -1 and maxy ge 0) or (miny le 0 and maxy gt 1) then begin
+    oplot,[0,0],[oc_sd_miny,oc_sd_maxy],thick=2
+  endif
+    xyouts,xlabel,ylabel,polstrings[chan+4],alignment=0.5,charsize=label_charsize
 endif
 
 ; Create the polarization ratio plot if requested
@@ -734,6 +798,9 @@ ndata = (*loaded1).ndata
 chanstring = (*loaded1).pol
 
 ; Express in absolute units if desired
+
+; For stokes, need rcs
+if keyword_set(chan) and chan lt 0 then rcs = 1
 
 if keyword_set(rcs) then spec = spec * sdev / df
 
