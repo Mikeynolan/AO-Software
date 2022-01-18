@@ -5432,7 +5432,8 @@ for n=0L,nuse-1 do begin
             if ch eq 1 then xxbase = double(baseline)
             if ch eq 2 then begin
               xxbase = float(sqrt(xxbase * double(baseline)))
-              xxbase[where(~finite(xxbase),/null)] = -1
+              xxbad = where(~finite(xxbase),count)
+              if count gt 0 then xxbase[xxbad] = -1
             endif
             if ch gt 2 and total(blinepol) gt 1 then baseline = xxbase
 ; end of Stokes stuff
