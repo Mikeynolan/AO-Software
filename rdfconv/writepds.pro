@@ -305,7 +305,7 @@ endfor
 printf, lun, '# Extra Tags,',addcomma
 printf, lun, 'file_date,', nowstring, ',s', addcr
 
-skipextra = ['xmit_pol','tzcorr','timezone']
+skipextra = ['xmit_poln','tzcorr','timezone']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
