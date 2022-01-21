@@ -1,0 +1,55 @@
+#!/usr/bin/perl -w
+
+#@mdays = (0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);
+#This may give multiple lines. No good way to decide, so just choose the
+# last matching one
+#
+
+my $datafile ="";
+
+$logfile = $ARGV[0];
+
+open ($lfh, "<$logfile") or die;
+
+while (<$lfh>) {
+  if (/Data file is:\s+(datafile\S+)/) {
+    $df = $1;
+  }
+  if (/Ephemeris file is:\s+(\S+)/) {
+    $ephmfile = $1;
+  }
+  if (/(\S+\.hdr)/) {
+    $hdrfile=$1;
+    ($obj,$pdate,$res) = ($hdrfile =~ /(\S+?)\.(\S+?)\.(\S+?).cw/);
+  }
+}
+
+die "No datafile found in logfiles\n" unless defined($df);
+
+#Generate writefile
+
+$rdffile = "$obj.$pdate.$res.rdf";
+$pdsfile = "$obj.$pdate.$res";
+
+open ($scrf, ">", "pdsscript.pro") || die;
+
+print $scrf <<EOF;
+\@cwinit
+.r /home/nolan/idl/writepds
+resetstack
+readrdf, '$rdffile'
+setpds, pname='${obj}_${pdate}_doppler_spectra'
+setpds, editor='Nolan, M.C.'
+pointing, data='$df', /noplot, /out, /stack
+nst = getnstack()
+for i = 1, nst do begin &\$
+  addextra, 's', 'ephemeris', '$ephmfile', stack=i &\$
+  addextra, 's', 'rawdata', '$df', stack=i &\$
+endfor
+writestackpds, '$pdsfile', /over
+EOF
+close $scrf;
+
+`idl86 < pdsscript.pro`;
+`cwlabel`;
+
