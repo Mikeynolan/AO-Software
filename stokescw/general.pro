@@ -1299,30 +1299,51 @@ endif
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+pro initstrings,help=help
+
+; Initialize the channel name strings and whatever else
+
+common channelBlock, chanstrings, maxchan
+if n_params() ne 0 or keyword_set(help) then begin
+  print,'initstrings[,/help]'
+  print,'       Initialize strings for run'
+  return
+endif
+
+chanstrings = ['OC','SC','RE','IM','S1','S2','S3','S4','MU','DL','RD','BL','GN']
+maxchan = n_elements(chanstrings)
+
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro unload,chan=chan,npol=npol,help=help
 
 ; Unload the currently loaded pair (i.e., zero things out)
+; Note: This is the first initialization routine, so the channels are defined here
 
 common loadedBlock,loadedi,loaded1,loaded
+common channelBlock, chanstrings, maxchan
 
 if n_params() ne 0 or keyword_set(help) then begin
-  print,'unload[,chan=1 .. 4][,npol=npol][,/help]'
+  print,'unload[,chan=1 .. n][,npol=npol][,/help]'
   print,'       -- if chan is specified, only the spectrum and tags are', $
         ' reset for that channel',format='(2a)'
   return
 endif
+
 if not keyword_set(npol) then npol = 2
 
 ; Check which channel(s) to unload
 
 if (n_elements(chan) eq 0) or (n_elements(loaded) eq 0) then begin
   unloadboth = 1
-endif else if (chan eq 1 or chan eq 2 or chan eq 3 or chan eq 4) then begin
+endif else if (chan gt 0 && chan le maxchan) then begin
   unloadboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 .. ' + strtrim(string(maxchan)) + ' or omit (both)'
   return
 endelse
+
 
 ; Do the unloading
 
@@ -1456,12 +1477,11 @@ pro load,n,chan=chan,help=help
 
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
-
-pollist = ['OC','SC','RE','IM']
+common channelBlock, chanstrings, maxchan
 
 if n_params() ne 1 or keyword_set(help) then begin
   print,' '
-  print,'load,n[,chan=1 or 2][,/help]'
+  print,'load,n[,chan=1 .. n][,/help]'
   print,'     n is the number (counting from 1) within the stack ', $
         'of the pair or single channel to load',format='(2a)'
   print,' '
@@ -1479,17 +1499,6 @@ endif else if n gt nstack then begin
   return
 endif
 
-; Check which channel(s) to load
-
-if n_elements(chan) eq 0 then begin
-  loadboth = 1
-endif else if (chan eq 1 and chan le 4) then begin
-  loadboth = 0
-endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (all)'
-  return
-endelse
-
 ; Create the vector of frequencies
 
 ndata = (*stack[n-1]).ndata
@@ -1497,6 +1506,18 @@ xjcen = (*stack[n-1]).tags[0].xjcen
 dfreq = (*stack[n-1]).tags[0].dfreq
 posfr = (*stack[n-1]).tags[0].posfr
 freq = posfr*dfreq*(findgen(ndata) - xjcen)
+npol = n_elements((*stack[n-1]).tags)
+
+; Check which channel(s) to load
+
+if n_elements(chan) eq 0 then begin
+  loadboth = 1
+endif else if (chan ge 1 and chan le npol) then begin
+  loadboth = 0
+endif else begin
+  print,'Must use chan = 1 (OC) or 2 (SC) up to npol or omit (all)'
+  return
+endelse
 
 ; Load the frequencies along with the spectrum and tags from the stack
 
@@ -1506,7 +1527,7 @@ if loadboth then begin
              ntags:(*stack[n-1]).ntags, nextra:(*stack[n-1]).nextra, $
              tname:(*stack[n-1]).tname}
 endif else begin
-  polstring = pollist[chan-1]
+  polstring = chanstrings[chan-1]
   *loaded1 = {freq:freq, spec:reform((*stack[n-1]).spec[chan-1,*]), $
              tags:(*stack[n-1]).tags[chan-1], $
              extratags:(*stack[n-1]).extratags, ndata:ndata, $
@@ -1608,8 +1629,7 @@ pro extract,freq=f,spec=s,ndata=nd,tags=t,ntags=nt,tname=tn, $
 ; not provided by these routines
 
 common loadedBlock,loadedi,loaded1,loaded
-
-channames = ['OC','SC','RE','IM']
+common channelBlock, chanstrings, maxchan
 
 extractsome = arg_present(f) or arg_present(s) or arg_present(nd) or arg_present(t) $
                              or arg_present(nt) or arg_present(tn) or arg_present(ex) $
@@ -1618,9 +1638,7 @@ extractsome = arg_present(f) or arg_present(s) or arg_present(nd) or arg_present
 if keyword_set(help) or n_params() ne 0 or (not extractsome) $
                      or (arg_present(pol) and n_elements(chan) eq 0) then begin
   print,'extract,freq=freq,spec=spec,ndata=ndata,tags=tags,ntags=ntags,extratags=extratags, $'
-  print,'        nextra=nextra,tname=tname[[,pol=pol],chan=1 or 2][,/help]'
-  print,' '
-  print,'        -- can only use the pol keyword if extracting a single channel'
+  print,'        nextra=nextra,tname=tname[[,pol=pol],chan=1 .. n][,/help]'
   return
 endif
 
@@ -1631,12 +1649,13 @@ endif
 
 ; Check which channel(s) to load
 
+npol = n_elements((*loaded).tags)
 if n_elements(chan) eq 0 then begin
   extractboth = 1
-endif else if (chan ge 1 and chan le 4) then begin
+endif else if (chan ge 1 and chan le npol) then begin
   extractboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) up to npol or omit (all)'
   return
 endelse
 
@@ -1650,7 +1669,7 @@ if arg_present(nt) then nt = (*loaded).ntags
 if arg_present(tn) then tn = (*loaded).tname
 if arg_present(ex) then ex = (*loaded).extratags
 if arg_present(nex) then nex = (*loaded).nextra
-if arg_present(p) then p = channames[chan]
+if arg_present(p) then p = extractboth ? chanstrings : chanstrings[chan-1]
 
 end
 
@@ -1752,14 +1771,16 @@ if keyword_set(help) or n_params() ne 0 or not somechanges then begin
   return
 endif
 
+npol = n_elements((*loaded).tags)
+
 ; Check which channel(s) to change
 
 if n_elements(chan) eq 0 then begin
   changeboth = 1
-endif else if (chan ge 1 and chan le 2) then begin
+endif else if (chan ge 1 && chan le npol) then begin
   changeboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) .. npol or omit (all)'
   return
 endelse
 
@@ -1769,7 +1790,7 @@ endelse
 storeloaded = ptr_new(*loaded)
 
 if keyword_set(reset) then begin
-  if changeboth then unload else unload,chan=chan
+  if changeboth then unload,npol=npol else unload,chan=chan
 endif
 
 ; Compute some parameters which will be needed for input validation
@@ -1781,7 +1802,7 @@ specsize = (specdims le 1) ? specinfo[1] : specinfo[2]
 lspecinfo = size((*loaded).spec)
 lspecdims = lspecinfo[0]
 lspecsize = (lspecdims le 1) ? specinfo[1] : specinfo[2]
-tagsize = (arg_present(t)) ? n_elements(t) : 2L
+tagsize = (arg_present(t)) ? n_elements(t) : npol
 ltagsize = n_elements((*loaded).tags[0,*])
 
 ; Go through each argument present, check that there are no mismatches between
@@ -1824,11 +1845,23 @@ if arg_present(s) then begin
     *loaded = *storeloaded
     ptr_free,storeloaded
     return
-  endif else if changeboth and (specdims ne lspecdims) then begin
-    print,"ERROR in changespec: Can't replace a two-channel spectral array with a 1-D vector"
-    *loaded = *storeloaded
-    ptr_free,storeloaded
-    return
+  endif else if changeboth && (specdims ne lspecdims  || tagsize ne ltagsize) then begin
+    if tagsize ne specdims then begin
+      print,"ERROR in changespec: Can't change the number of polarizations in the spectral array"
+      print,"                     without changing tags to match (or vice versa)."
+      print,"                     Loaded spectrum has "+strtrim(string(lspecdims))+" pols, you "+$
+            "gave me "+strtrim(string(specdims))+" spectra and "+strtrim(string(tagsize))+" sets of tags."
+      *loaded = *storeloaded
+      ptr_free,storeloaded
+      return
+    endif else if ~ keyword_set(force) then begin
+      print,"ERROR in changespec: Must use /force if you want to change the number of polarizations"
+      *loaded = *storeloaded
+      ptr_free,storeloaded
+      return
+    endif else  begin
+      print,"WARNING in changespec: Attempting to change the number of polarizations. Might work."
+    endelse
   endif
   if changeboth then begin
     (*loaded).spec = s
@@ -1842,12 +1875,6 @@ if arg_present(t) then begin
   if n_tags(t) ne (*loaded).ntags then begin
     print,'ERROR in changespec: These routines are only set up to handle ',(*loaded).ntags, $
           'tags, not ',n_tags(t),format='(a,i0,a,i0)'
-    *loaded = *storeloaded
-    ptr_free,storeloaded
-    return
-  endif else if changeboth and (tagsize ne ltagsize) then begin
-    print,"ERROR in changespec: Can't replace a two-channel tag-structure vector with a ", $
-          "one-channel structure",format='(2a)'
     *loaded = *storeloaded
     ptr_free,storeloaded
     return
@@ -2060,12 +2087,13 @@ endif
 
 ; Check which channel(s) to push
 
+npol = n_elements((*loaded).tags)
 if n_elements(chan) eq 0 then begin
   pushboth = 1
-endif else if (chan ge 1 and chan le 4) then begin
+endif else if (chan ge 1 and chan le npol) then begin
   pushboth = 0
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) .. npol or omit (all)'
   return
 endelse
 
@@ -2355,7 +2383,7 @@ endelse
 if n_params() ne 0L or (not keywordsOK) or keyword_set(help) then begin
   print,' '
   print,'deletestack1[,n=n][,first=first,last=last][,arr=arr][,/silent][,/help]'
-  print,'   Specify one and only one of the following:
+  print,'   Specify one and only one of the following:'
   print,'   -  n is the number (counting from 1) of the single-channel spectrum ', $
         'to delete from stack1',format='(2a)'
   print,'   -  first and last together specify a range of spectra to delete'
@@ -3011,6 +3039,7 @@ end
 ; set the tag variable types and initial display format; and set some
 ; plotting parameters
 
+initstrings
 unload
 unload1
 unloadi

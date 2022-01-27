@@ -931,7 +931,7 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,'            (default: minimum, maximum pixel values --> black, bright white)'
   print,'      levels=3.8 is the same as levels=[0.0,3.8].'
   print,' '
-  print,'      The next three scaling keywords are mutually exclusive:
+  print,'      The next three scaling keywords are mutually exclusive:'
   print,'            /sqroot displays the square root of pixel values.'
   print,"                 (If levels aren't specified, pixels < 0.0 are first reset to 0.0.)"
   print,'            /log displays the base-10 logarithm of pixel values.'
@@ -978,7 +978,7 @@ endif else begin
     x = dfreq*(findgen(width) - eph_col)       ; Doppler (Hz)
     y = delayunit*(findgen(height) - eph_row)  ; delay (usec)
     xtitlestring = 'Doppler (Hz)'
-    ytitlestring = 'Delay (' + string("265B) + 's)'  ; includes lower-case "mu"
+    ytitlestring = 'Delay (' + string("265B) + 's)'  ; includes lower-case "mu" "
   endif else begin
     print,' '
     print,'WARNING in showim: Axis units will be bin number rather than Hz and usec'
@@ -1337,6 +1337,7 @@ pro writerdf,outfile,chan=chan,tkplay=tkplay,help=help,_extra=_ext
 ; Write the loaded pair to disk as an rdf file
 
 common loadedBlock,loadedi,loaded1,loaded
+common channelBlock, chanstrings, maxchan
 
 if n_params() ne 1 or keyword_set(help) then begin
   print,'writerdf,outfile[,/overwrite][,/append][,chan=1 or 2][,/tkplay][,/help]'
@@ -1355,17 +1356,6 @@ if (*loaded).ndata le 2 then begin
   return
 endif
 
-; Check which channel(s) to write
-
-if n_elements(chan) eq 0 then begin
-  writepol = [1,1]
-endif else if chan eq 1 or chan eq 2 then begin
-  writepol = (chan eq 1) ? [1,0] : [0,1]
-endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
-  return
-endelse
-nchan = total(writepol)
 
 ; Get some elements of the loaded spectrum
 
@@ -1376,7 +1366,20 @@ ndata = (*loaded).ndata
 ntags = (*loaded).ntags
 tname = (*loaded).tname
 nextra = (*loaded).nextra
-if nchan eq 2 then begin
+npol = n_elements((*loaded).tags)
+; Check which channel(s) to write
+
+writepol = intarr(npol)
+if n_elements(chan) eq 0 then begin
+  writepol = writepol + 1
+endif else if chan ge 1 && chan le npol then begin
+  writepol[chan-1] = 1
+endif else begin
+  print,'Must use chan = 1 (OC) or 2 (SC) .. npol or omit (all)'
+  return
+endelse
+nchan = total(writepol)
+if nchan gt 1 then begin
   extratags_write = extratags
   nextra_write = nextra
 endif else begin
@@ -1420,7 +1423,7 @@ printf,lun,'i','ndata',ndata,format=iformat
 printf,lun,'i','height',nchan,format=iformat
 printf,lun,'i','width',ndata+ntags,format=iformat
 printf,lun,'i','size',4,format=iformat
-printf,lun,'s','machine','SPARC',format=sformat
+printf,lun,'s','machine','SPARC',format=sformat ; === bigendian IEEE
 printf,lun,'i','nchan',nchan,format=iformat
 printf,lun,'i','ntags',ntags,format=iformat
 printf,lun,'i','nspec',nchan,format=iformat
@@ -1430,7 +1433,7 @@ printf,lun,'.'
 ; Write the spectrum and tags (as binary)
 ; -- write all tags as floating point to be compatible with tkplay
 
-for ch=1,2 do begin
+for ch=1,npol do begin
   if writepol[ch-1] then begin
     writeu,lun,swap_endian(pair[ch-1,*], /swap_if_little_endian)
     for n=0L,ntags-1 do begin
@@ -1445,12 +1448,18 @@ for n=0L,nextra_write-1 do begin
   printf,lun,strtrim(string(extratags_write[n],format='(a,5x,a16,3x,a,3x,a)'), 2)
 endfor
 printf,lun,'s','target',tname,format=sformat
-chanstring = ['OC','SC']
-if nchan eq 1 then printf,lun,'s','polarization',chanstring[chan-1],format=sformat
+polstring = ""
+first=1
+for n=0, npol-1 do begin
+  if (writepol[n]) then polstring = polstring + (first ? "" : ", ") + chanstrings[n]
+  first = 0
+endfor
+ 
+if nchan eq 1 then printf,lun,'s','polarization',chanstrings[chan-1],format=sformat
 printf,lun,'.'
 
-if nchan eq 2 then begin
-  print,'Wrote 1 rdf frame, containing 1 OC and 1 SC spectrum, to file ',outfile
+if nchan ge 2 then begin
+  print,'Wrote 1 rdf frame, containing '+polstring+' spectra, to file ',outfile
 endif else begin
   print,'Wrote 1 rdf frame, containing 1 ',chanstring[chan-1], $
         ' spectrum, to file ',outfile,format='(4a)'
@@ -1650,6 +1659,7 @@ pro writestackrdf,outfile,group=g,ming=ming,maxg=maxg,arrayg=ag, $
 ; omitting all of these causes all stack pairs to be written.
 
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
 
 ; Check if a valid set of group-related keywords is set
 
@@ -1745,18 +1755,6 @@ for j=0L,ngroups-1 do begin
   endif
 endfor
 
-; Check which channel(s) to write
-
-if n_elements(chan) eq 0 then begin
-  writepol = [1,1]
-endif else if chan eq 1 or chan eq 2 then begin
-  writepol = (chan eq 1) ? [1,0] : [0,1]
-endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
-  return
-endelse
-nchan = total(writepol)
-
 ; Open the output file
 
 err = openOutfile(lun,outfile,'rdf',/get_lun,_extra=_ext)
@@ -1786,7 +1784,18 @@ for n=0L,nstack-1 do begin
     ntags = (*stack[n]).ntags
     nextra = (*stack[n]).nextra
     tname = (*stack[n]).tname
-    if nchan eq 2 then begin
+    npol = n_elements((*stack[n]).tags)
+    writepol = intarr(npol)
+    if n_elements(chan) eq 0 then begin
+      writepol = writepol + 1
+    endif else if chan ge 1 && chan le npol then begin
+      writepol[chan-1] = 1
+    endif else begin
+      print,'Must use chan = 1 (OC) or 2 (SC) .. npol or omit (all)'
+      return
+    endelse
+    nchan = total(writepol)
+    if nchan ge 2 then begin
       extratags_write = extratags
       nextra_write = nextra
     endif else begin
@@ -1833,7 +1842,7 @@ for n=0L,nstack-1 do begin
     ; Write the spectrum and tags (as binary)
     ; -- write all tags as floating point to be compatible with tkplay
 
-    for ch=1,2 do begin
+    for ch=1,npol do begin
       if writepol[ch-1] then begin
         writeu,lun,swap_endian(pair[ch-1,*], /swap_if_little_endian)
         for k=0L,ntags-1 do begin
@@ -1848,8 +1857,14 @@ for n=0L,nstack-1 do begin
       printf,lun,strtrim(string(extratags_write[k],format='(a,5x,a16,3x,a,3x,a)'), 2)
     endfor
     printf,lun,'s','target',tname,format=sformat
-    chanstring = ['OC','SC']
-    if nchan eq 1 then printf,lun,'s','polarization',chanstring[chan-1],format=sformat
+    polstring = ""
+    first=1
+    for ch=0, npol-1 do begin
+      if (writepol[ch]) then polstring = polstring + (first?"":", ") + chanstrings[ch]
+      first = 0
+    endfor
+
+    if nchan eq 1 then printf,lun,'s','polarization',chanstrings[chan-1],format=sformat
     printf,lun,'.'
 
     nwrite = nwrite + 1L
@@ -1857,8 +1872,8 @@ for n=0L,nstack-1 do begin
   endif
 endfor
 
-if nchan eq 2 then begin
-  print,'Wrote ',nwrite,' rdf frames, each containing 1 OC and 1 SC spectrum, to file ', $
+if nchan ge 2 then begin
+  print,'Wrote ',nwrite,' rdf frames, the last containing '+polstring+' spectra, to file ', $
         outfile,format='(a,i0,2a)'
 endif else begin
   print,'Wrote ',nwrite,' rdf frames, each containing 1 ',chanstring[chan-1], $

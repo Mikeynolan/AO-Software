@@ -180,7 +180,7 @@ if n_params() ne 1 or keyword_set(help) then begin
   print,'if the stack keyword is set'
   print,' '
   print,'If chan=1 or chan=2, a scalar is returned;'
-  print,'if chan is omitted, a two-element [OC,SC] array is returned'
+  print,'if chan is omitted, an array with all of the polarizations is returned'
   print,' '
   return, ''
 endif else if size(tagname, /type) ne 7 then begin
@@ -324,7 +324,7 @@ if keyword_set(help) or isnull(name) or n_params() ne 1 then begin
   print,' '
   print,'Return the value of an extra tag for the loaded pair;'
   print,'    if the tag is not present, the null string is returned'
-  print,'
+  print,' '
   print,'name must be a quoted string'
   print,' '
   print,'/comment returns the tag comment rather than the tag value'
@@ -415,7 +415,7 @@ if keyword_set(help) or isnull(name) or n_params() ne 1 then begin
   print,' '
   print,'Return the value of an extra tag for the loaded single-channel spectrum;'
   print,'    if the tag is not present, the null string is returned'
-  print,'
+  print,' '
   print,'name must be a quoted string'
   print,' '
   print,'/comment returns the tag comment rather than the tag value'
@@ -506,7 +506,7 @@ if keyword_set(help) or isnull(name) or n_params() ne 1 then begin
   print,' '
   print,'Return the value of an extra tag for the loaded image;'
   print,'    if the tag is not present, the null string is returned'
-  print,'
+  print,' '
   print,'name must be a quoted string'
   print,' '
   print,'/comment returns the tag comment rather than the tag value'
@@ -1908,6 +1908,8 @@ pro showbw,threshold,mode=mode,center=center,chan=chan,help=help
 ; Display the signal bandwidth at a given threshold for the loaded pair
  
 common loadedBlock,loadedi,loaded1,loaded
+common channelBlock, chanstrings, maxchan
+
 
 if n_params() gt 1 or keyword_set(help) then begin
   print,' '
@@ -1928,19 +1930,21 @@ if (*loaded).ndata le 2 then begin
   return
 endif
 
+npol = n_elements((*loaded).tags)
+
 ; Decide which channel to use
 
+showpol = intarr(npol)
+
 if n_elements(chan) eq 0 then begin
-  showpol = [1,1]
-endif else if chan eq 1 then begin
-  showpol = [1,0]
-endif else if chan eq 2 then begin
-  showpol = [0,1]
+  showpol = showpol + 1
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
-  return
+  if chan-1 gt npol then begin
+    print,'Chan may not be larger than the number of polarizations'
+    return
+  endif
+  showpol[chan-1] = 1
 endelse
-chanstrings = ['OC: ','SC: ','RE: ','IM: ']
 
 ; Set the defaults for parameters which haven't been specified
 
@@ -1958,11 +1962,11 @@ storeloaded1 = ptr_new(*loaded1)
 ; Display the bandwidth(s) and the left and right spectral edges
 
 printstring = ''
-for ch=1,2 do begin
+for ch=1,npol do begin
   if showpol[ch-1] then begin
     two2one,ch
     bw1 = bandwidth1(threshold,leftedge,rightedge,mode=mode,center=center)
-    printstring = printstring + chanstrings[ch-1] $
+    printstring = printstring + chanstrings[ch-1] +": " $
                   + string(bw1,format='(f7.2)') $
                   + ' Hz  (' + string(leftedge,format='(f8.2)') $
                   + ' Hz to  ' + string(rightedge,format='(f8.2)') $
@@ -5755,18 +5759,6 @@ if n lt 0 then begin
   return
 endif
 
-; Check which channels to smooth
-
-smoothpol = intarr(4)
-if (n_elements(chan) eq 0) then begin
-  smoothpol = smoothpol + 1
-endif else if (chan ge 1 and chang le 4) then begin
-  smoothpol[chan-1] = 1
-endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or 3 or 4 or omit (both)'
-  return
-endelse
-
 ; Do the smoothing
 
 efb = 1.0*efb
@@ -5780,13 +5772,26 @@ if not keyword_set(st) then begin
     print,'ERROR in smoothf: No pair is loaded'
     return
   endif
-
+  npol = n_elements((*loaded).spec[*,0])
+    
   ndata = (*loaded).ndata
   dfreq = (*loaded).tags[0].dfreq
   freq = (*loaded).freq
-  npol = n_elements((*loaded).spec[*,0])
-  chanWasSmoothed = [0,0]
+  chanWasSmoothed = intarr(npol)
 
+; Check which channels to smooth
+
+  smoothpol = intarr(npol)
+  if (n_elements(chan) eq 0) then begin
+    smoothpol = smoothpol + 1
+  endif else begin
+    if chan lt 1 || chan - 1 gt npol then begin
+      print, "ERROR in smoothf: request chan larger than number of channels in pair"
+      return
+    endif
+    smoothpol[chan-1] = 1
+  endelse
+  
   ; Proceed according to the type of smoothing requested
 
   if keyword_set(gauss) then begin
@@ -5861,6 +5866,18 @@ endif else begin
     posfr = (*stack[k]).tags[0].posfr
     xjcen = (*stack[k]).tags[0].xjcen
     npol = n_elements((*stack[k]).spec[*,0])
+; Check which channels to smooth
+
+    smoothpol = intarr(npol)
+    if (n_elements(chan) eq 0) then begin
+      smoothpol = smoothpol + 1
+    endif else begin
+      if chan lt 1 || chan - 1 gt npol then begin
+        print, "ERROR in smoothf: request chan larger than number of channels in pair"
+        return
+      endif
+      smoothpol[chan-1] = 1
+    endelse
     freq = posfr*dfreq*(findgen(ndata) - xjcen)
     chanWasSmoothed = intarr(npol)
     if keyword_set(gauss) then begin

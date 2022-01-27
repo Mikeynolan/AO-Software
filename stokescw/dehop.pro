@@ -1951,10 +1951,11 @@ endelse
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro nohop_start,hoptouse=hoptouse,flipchan=flipchan,npol=npol,help=help,_extra=_ext
+pro nohop_start,hoptouse=hoptouse,flipchan=flipchan,nostokes=nostokes,help=help,_extra=_ext
 
 ; Start processing an OC/SC spectral pair which wasn't hopped,
 ; or else a hopped pair for which you want the raw weighted sum for just one hop color
+; If there are 4 files, do Stokes unless told not to.
 ;
 ; Produce a weighted spectral sum, which afterwards can be vignetted using vignette,
 ; then baseline-subtracted and normalized using nohop_finish
@@ -1963,13 +1964,6 @@ common param,infile,filestem,filesuffix,npts,nhops,hop1,lbin,rbin,df,dwell,date,
 common azel,zfile,zstem,zdata,n_zdata,tzcorr,outputTimeZone,radec,deldopcorr
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
-
-; Default to standard processing, mainly because file checking is done at a lower level.
-if not keyword_set(npol) then npol=2
-if npol lt 2 or npol gt 4 then begin
-  print, 'ERROR: Dehop: npol mist be 2, 3, or 4 '
-  return
-endif
 
 if n_params() ne 0 or keyword_set(help) then begin
   print,' '
@@ -1991,10 +1985,9 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,'            xjcen, posfr, nor the frequency vector are changed.  Flipping is'
   print,'            done before any shifting is carried out due to /roundephcorr.'
   print,'            Permitted values are flipchan = 1, 2, or 3 (flip both channels).'
-  print, '     npol sets the number of channels it reads. npol=2 (default) is normal'
-  print,'            OC/SC processing. npol=4 adds the RE and Im Stokes data. Note:'
-  print,'            flipchan must be 0 or 3 if npol=4: you can''t flop the crosses'
-
+  print,'            Note: for Stonkes flipchan must be 0 or 3 if npol=4: you can''t'
+  print,'            flip the crosses'
+  print, '     /nostokes to skip Stokes processing even if .p3 and .p4 files are there'
   print,' '
   return
 endif
@@ -2027,11 +2020,8 @@ endelse
 if not keyword_set(flipchan) then begin
   iqerror_OC = 0
   iqerror_SC = 0
+  flipchan = 0
 endif else begin
-  if npol gt 2 and flipchan ne 3 then begin
-    print, "ERROR in dehop: Don't know how to do Stokes with differently-flipped spectra"
-    return
-  endif
   iqerror_OC = (flipchan eq 1 or flipchan eq 3) ? 1 : 0
   iqerror_SC = (flipchan eq 2 or flipchan eq 3) ? 1 : 0
 endelse
@@ -2062,32 +2052,41 @@ n_OC = nstack1 - nstack1_start
 infile = filestem + '.p2' + filesuffix
 nohop_start1,2,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
 n_SC = nstack1 - (nstack1_start + n_OC)
+npol = 2
 
-if npol gt 2 then begin
+if ~keyword_set(nostokes) then begin
+; Look for and then Dehop the RE data
 
-; Dehop the RE data
+; iqerror_OC and SC are the same, can send in either.
+  infile = filestem + '.p3' + filesuffix
+  if file_test(infile, /read) then begin
+    if flipchan ne 3 && flipchan ne 0 then begin
+      print, "flipchan different for pols, skipping Stokes processing"
+    endif else begin
+      nohop_start1,3,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+      n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
+      npol = 3
 
-infile = filestem + '.p3' + filesuffix
-nohop_start1,3,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
-n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
+; Look for and Dehop the IM data
 
-endif
-
-if npol gt 3 then begin
-
-; Dehop the IM data
-
-infile = filestem + '.p4' + filesuffix
-nohop_start1,4,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
-n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
-
+      infile = filestem + '.p4' + filesuffix
+      if file_test(infile, /read) then begin
+        nohop_start1,4,hoptouse=hoptouse,iqerror=iqerror_SC,/silent,_extra=_ext
+        n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
+        npol = 4
+      endif
+    endelse
+  endif
 endif
 
 
 ; Decide what to do with the two channels, then do it
 
+if npol eq 3 then begin 
+  print, "ERROR in Dehop: Found 3 pols, will process as OC/SC only"
+  npol = 2
+endif
 if npol eq 2 then processRaw_combineChans,n_OC,n_SC,nstack1_start
-if npol eq 3 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE
 if npol eq 4 then processRaw_combineChans,n_OC,n_SC,nstack1_start,n_RE,n_IM
 
 ; If everything worked correctly and all output channels were spliced into
