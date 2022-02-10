@@ -1784,7 +1784,7 @@ for n=0L,nstack-1 do begin
     ntags = (*stack[n]).ntags
     nextra = (*stack[n]).nextra
     tname = (*stack[n]).tname
-    npol = n_elements((*stack[n]).tags)
+    npol = n_elements(tags)
     writepol = intarr(npol)
     if n_elements(chan) eq 0 then begin
       writepol = writepol + 1
@@ -1876,7 +1876,7 @@ if nchan ge 2 then begin
   print,'Wrote ',nwrite,' rdf frames, the last containing '+polstring+' spectra, to file ', $
         outfile,format='(a,i0,2a)'
 endif else begin
-  print,'Wrote ',nwrite,' rdf frames, each containing 1 ',chanstring[chan-1], $
+  print,'Wrote ',nwrite,' rdf frames, each containing 1 ',chanstrings[chan-1], $
         ' spectrum, to file ',outfile,format='(a,i0,4a)'
 endelse
 
@@ -2582,7 +2582,7 @@ if n_elements(chan) eq 0 then begin
 endif else if chan eq 1 or chan eq 2 then begin
   writepol = (chan eq 1) ? [1,0] : [0,1]
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both)'
+  print,'Must use chan = 1 (OC) or 2 (SC) or omit (both). Stokes not implemented'
   return
 endelse
 
@@ -2767,6 +2767,7 @@ function rdfHeaderOK,fileformat,machine,dataformat,bytesPerValue, $
 ; This function is called by readrdf
 
 common loadedBlock,loadedi,loaded1,loaded
+common channelBlock, chanstrings, maxchan
 
 ; Find out how many cw tags are assumed by these reduction procedures
 
@@ -2825,9 +2826,9 @@ if isCW then begin
     print,'ERROR: nspec = ',nspec,format='(a,i0)'
     print,'       readrdf expects nspec = height (= ',height,')',format='(a,i0,a)'
     return, 0
-  endif else if (nchan ne 1 and nchan ne 2) then begin
+  endif else if (nchan lt 1 || nchan gt maxchan) then begin
     print,'ERROR: nchan = ',nchan,format='(a,i0)'
-    print,'       readrdf is only set up to handle 1 or 2 channels per rdf frame'
+    print,'       readrdf is only set up to handle 1 to ', strtrim(string(maxchan),2), ' channels per rdf frame'
     return, 0
   endif
 endif else begin
@@ -2876,6 +2877,8 @@ function polOK,isCW,height,nchan,polarization,jcp_in,pol_in,loose=loose,addpol=a
 ;           though polarization is 'OC' or 'SC': treat it as if nchan = 1
 ;
 ; This function is called by readrdf and readfits
+
+common channelBlock, chanstrings, maxchan
 
 if isCW and nchan eq 2 and (polarization eq 'OC' or polarization eq 'SC') $
         and keyword_set(loose) then begin
@@ -2957,15 +2960,19 @@ endif else if isCW and isnull(polarization) then begin
 
     n = 0L
     alternating = 1
-    while alternating and (n lt height-1) do begin
-      alternating = (jcp_in[n] eq 1 and jcp_in[n+1] eq 2) or $
-                    (jcp_in[n] eq 2 and jcp_in[n+1] eq 1)
-      n = n + 1L
-    endwhile
+    if nchan eq 2 then begin
+      while alternating and (n lt height-1) do begin
+        alternating = (jcp_in[n] eq 1 and jcp_in[n+1] eq 2) or $
+                      (jcp_in[n] eq 2 and jcp_in[n+1] eq 1)
+        n = n + 1L
+      endwhile
+    endif else begin
+      print, "There are ", strtrim(string(nchan),2), "channels: assuming correct alternating pols"
+    endelse
     if alternating then begin
       pol_in = strarr(height)
       for n=0L,height-1 do begin
-        pol_in[n] = (jcp_in[n] eq 1) ? 'OC' : 'SC'
+        pol_in[n] = chanstrings[jcp_in[n]-1]
       endfor
       return, 1
     endif else begin
@@ -3063,6 +3070,10 @@ pro readrdf,infile,nopairs=nopairs,loose=loose,addpol=addpol,tkplay=tkplay,silen
 ; Aug 2010: When /loose is set, (a) treat an allegedly 2-channel CW frame as
 ;           single-channel data if polarization is set to 'OC' or 'SC', and
 ;           (b) reset impossibly huge values of the CW 'igw' tag to zero
+;
+; Feb 2022  Modified to read in multi-channel data. To avoid pain, will only
+;           be implemented for 'alternating' rdf files
+;
 
 common tagIO,tagtypes,tagformats,nameformat,iowidth,iodecplaces,iomaxline
 common loadedBlock,loadedi,loaded1,loaded
@@ -3508,7 +3519,7 @@ free_lun,lun
 
 ; Check whether all CW spectra can be paired
 
-if nreadCW eq 0 or nopairs or (2*(nreadCW/2L) ne nreadCW) then begin
+if nreadCW eq 0 or nopairs or (nchan*(nreadCW/nchan) ne nreadCW) then begin
 
   ; Treat as single spectra, not pairs:
   ; no spectra, or an odd number of spectra, or else the "don't pair" flag was set
@@ -3518,9 +3529,9 @@ if nreadCW eq 0 or nopairs or (2*(nreadCW/2L) ne nreadCW) then begin
 endif else begin
 
   ; See if the file is broken into halves: first all the spectra from one
-  ; polarization channel, then all the corresponding spectra from the other
+  ; polarization channel, then all the corresponding spectra from another
 
-  nhalf = nreadCW/2L
+  nhalf = nreadCW/nchan
   halves = 1
   n = 0L
   while (halves and n lt nhalf) do begin
@@ -3542,7 +3553,7 @@ endif else begin
 
   ; If that didn't pan out, see if the file consists entirely of alternating
   ; polarization channels: each spectrum immediately preceded or followed by the
-  ; corresponding spectrum from the opposite channel
+  ; corresponding spectrum from another channel
 
   alternating = not halves
   n = 0L
@@ -3559,7 +3570,7 @@ endif else begin
                   ((*stackRead1[n]).tags.nfreq eq (*stackRead1[n+1]).tags.nfreq) and $
                   ((*stackRead1[n]).tags.frstep eq (*stackRead1[n+1]).tags.frstep) and $
                   ((*stackRead1[n]).tags.freq1 eq (*stackRead1[n+1]).tags.freq1)
-    n = n + 2L
+    n = n + nchan
   endwhile
 
   pairSpectra = halves or alternating
@@ -3581,6 +3592,7 @@ if pairSpectra then begin
   stackRead = ptrarr(npairs, /allocate_heap)
   for n=0L,npairs-1 do begin
     if halves then begin
+      nvec = indgen(nchan) * nhalf + n
       if (*stackRead1[n]).pol eq 'OC' then begin
         n1 = n
         n2 = n + nhalf
@@ -3589,32 +3601,43 @@ if pairSpectra then begin
         n2 = n
       endelse
     endif else begin
-      if (*stackRead1[2*n]).pol eq 'OC' then begin
-        n1 = 2*n
-        n2 = 2*n + 1
+      nvec = indgen(nchan) + n * nchan
+      if (*stackRead1[nchan*n]).pol eq 'OC' then begin
+        n1 = nchan*n
+        n2 = nchan*n + 1
       endif else begin
-        n1 = 2*n + 1
-        n2 = 2*n
+        n1 = nchan*n + 1
+        n2 = nchan*n
       endelse
     endelse
+  ; OC and SC are special 
+    nvec[0] = n1
+    nvec[1] = n2
     pair_ntags =  (*stackRead1[n1]).ntags
-    pair_tags = blanktags()
-    for k=0L,pair_ntags-1 do begin
-      pair_tags.(k) = [(*stackRead1[n1]).tags.(k), (*stackRead1[n2]).tags.(k)]
+    pair_tags = blanktags(npol=nchan)
+  ; Need to loop in case they are out of order
+    for j = 0, nchan-1 do begin
+      pair_tags[j] = (*stackRead1[nvec[j]]).tags
     endfor
+;    for k=0L,pair_ntags-1 do begin
+;      pair_tags.(k) = (*stackRead1).tags.(k)
+;    endfor
+ ; For the extratags, just use OC and SC. 
     mergeExtra,(*stackRead1[n1]).extratags,(*stackRead1[n2]).extratags, $
                (*stackRead1[n1]).nextra,(*stackRead1[n2]).nextra, $
                pair_extratags,pair_nextra
     stackStruc = {group:groupCW, $
-                  spec:fltarr(2,(*stackRead1[n1]).ndata), $
+                  spec:fltarr(nchan,(*stackRead1[n1]).ndata), $
                   tags:pair_tags, $
                   extratags:pair_extratags, $
                   ndata:(*stackRead1[n1]).ndata, $
                   ntags:pair_ntags, $
                   nextra:pair_nextra, $
                   tname:(*stackRead1[n1]).tname}
-    stackStruc.spec[0,*] = (*stackRead1[n1]).spec
-    stackStruc.spec[1,*] = (*stackRead1[n2]).spec
+ ; need to loop in case they are out of order
+    for j = 0, nchan-1 do begin
+      stackStruc.spec[j,*] = (*stackRead1[nvec[j]]).spec
+    endfor
     *stackRead[n] = stackStruc
   endfor
 
@@ -3682,7 +3705,7 @@ if pairSpectra then ptr_free,stackRead
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro cw2dat,outfile,sc=sc,stack=n,help=help,_extra=_ext
+pro cw2dat,outfile,sc=sc,stack=n,chan=chan,help=help,_extra=_ext
 
 ; Write one channel of spectral data to a dat (ASCII text) file:
 ; -- Do this for the loaded pair, or else for stack pair n
@@ -3691,15 +3714,16 @@ pro cw2dat,outfile,sc=sc,stack=n,help=help,_extra=_ext
 
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
 
 if n_params() ne 1 or keyword_set(help) then begin
-  print,'cw2dat,outfile[,/overwrite][,/append][,stack=n][,/sc][,/help]'
+  print,'cw2dat,outfile[,/overwrite][,/append][,stack=n][,/sc][,chan=chan][,/help]'
   print,' '
   print,'Write one channel of spectral data to a dat (ASCII text) file'
   print,' '
   print,'   Do this for the loaded pair, or else for stack pair n if the stack keyword is used'
   print,' '
-  print,'   Do this for the OC spectrum, unless /sc is set'
+  print,'   Do this for the OC spectrum, unless chan or /sc is set'
   print,' '
   print,"   '.dat' output file extension is added if not already present"
   print,' '
@@ -3731,16 +3755,19 @@ endif
 
 if n_elements(n) gt 0 then begin
   pair = (*stack[n-1]).spec
+  npol = n_elements((*stack[n-1]).tags)
 endif else begin
   pair = (*loaded).spec
+  npol = n_elements((*loaded).tags)
 endelse
-if keyword_set(sc) then begin
-  spec = reform(pair[1,*])
-  chanstring = 'SC'
-endif else begin
-  spec = reform(pair[0,*])
-  chanstring = 'OC'
-endelse
+if n_elements(chan) eq 0 then chan = 1
+if chan lt 0 || chan gt npol then begin
+  print, "ERROR in cw2dat. chan must be 1 .. npol"
+  return
+endif
+if keyword_set(sc) then chan = 2
+spec = reform(pair[chan,*])
+chanstring = chanstrings[chan-1]
 
 ; Open the output file
 
