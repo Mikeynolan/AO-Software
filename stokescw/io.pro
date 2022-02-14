@@ -392,6 +392,7 @@ pro plotsum,smooth=smooth,xrange=xrange,maxf=maxf,full=full,mu=mu,maxmu=maxmu,  
 ; Modified 2006 Jun 25 by CM: Frequency refers to center of bin, not left edge
 
 common loadedBlock,loadedi,loaded1,loaded
+common channelBlock, chanstrings, maxchan
 
 ; Check that frequency range was correctly input (if input at all)
 
@@ -434,11 +435,12 @@ if n_params() ne 0 or not xrangeOK or keyword_set(help) then begin
   print,'       maxmu is the maximum polarization ratio to plot'
   print,'            (default ~ the smaller of 1.2 or the maximum ratio in the data)'
   print,' '
-  print,'       /separate produces separate OC and SC plots; otherwise the'
-  print,'            OC and SC spectra are superimposed within the same plot'
+  print,'       /separate produces separate plots for each pol; otherwise the'
+  print,'            spectra are superimposed within the same plot'
   print,' '
   print,'       /rcs expresses signal strength as radar cross section density in'
   print,'            km^2 per Hz; otherwise the unit is the rms noise'
+  print,'       chan can be a single number or a vector, for multiple superimposed plots.'
   print,' '
   return
 endif else if (*loaded).ndata le 2 then begin
@@ -448,92 +450,81 @@ endif
 
 ; Check which channel(s) to write
 
-polstrings = ['S4','S3','S2','S1','NA','OC','SC','RE','IM']
-plotpol = [0,0,0,0,0]
-if not keyword_set(chan) then begin
-  plotpol = [1,1,0,0,0]
-endif else begin
-  if keyword_set(separate) then begin
-    print,"ERROR in plotsum: Can't set /separate if 'chan' keyword is used"
-    return
-  endif
-  if chan eq 1 or chan eq 2  then begin
-    plotpol[chan-1] = 1
-  endif else plotpol[4] = 1
-endelse
-
-nplots = (keyword_set(separate)) ? total(plotpol) : 1L
-
 ; Get some elements of the loaded pair
 
 f = (*loaded).freq
-npol = n_elements((*loaded).spec[*,0])
+specs = (*loaded).spec
 oc = reform((*loaded).spec[0,*])
 sc = reform((*loaded).spec[1,*])
-if npol gt 2 then re = reform((*loaded).spec[2,*])
-if npol gt 3 then im = reform((*loaded).spec[3,*])
 tags = (*loaded).tags
+npol = n_elements(tags)
+sdev = tags.sdev
 oc_sdev = tags[0].sdev
 sc_sdev = tags[1].sdev
-xx_sdev = sqrt(oc_sdev * sc_sdev)
+xx_sdev = sqrt(sdev[0] * sdev[1])
 df = tags[0].dfreq
 posfr = tags[0].posfr
 bin0 = tags[0].xjcen
 ndata = (*loaded).ndata
+ocsconly = 1 ; Flag if anything but OC or SC is requested
+
+plotpol = intarr(npol)
+if n_elements(chan) eq 0 then begin ; default is OC,SC
+  plotpol[0:1] = 1
+endif else begin
+  if n_elements(chan) eq 1 then begin
+    if chan ge 1 && chan le npol then begin
+      plotpol[chan-1] = 1
+      if chan gt 2 then ocsconly = 0
+    endif else begin
+      print, 'ERROR in plotsum: Chan must be 1 .. npol'
+      return
+    endelse
+  endif else begin
+    for i = 0, n_elements(chan)-1 do begin
+      if chan[i] ge 1 && chan[i] le npol then begin
+        plotpol[chan[i]-1] = 1
+        if chan[i] gt 2 then ocsconly = 0
+      endif else begin
+        print, 'ERROR in plotsum: All chans must be 1 .. npol'
+        return
+      endelse
+    endfor
+  endelse
+endelse
+
+nplots = (keyword_set(separate)) ? total(plotpol) : 1L
 
 ; Express in absolute units if desired
 
 ; For stokes, need rcs
-if keyword_set(chan) && chan lt 0 then rcs = 1
+if ~ ocsconly then rcs = 1
 
 if keyword_set(rcs) then begin
+  specrcs = specs * (sdev # replicate(1,ndata)) * df
   oc = oc * oc_sdev / df
   sc = sc * sc_sdev / df
-  if npol gt 2 then re = re * xx_sdev / df
-  if npol gt 3 then begin
-    im = im * xx_sdev / df
-    S1 = oc + sc
-    S2 = 2 * re
-    S3 = -2 * im
-    S4 = oc - sc
-  endif
+  specs = specrcs
 endif
 
 ; Smooth the spectra if desired
 
 oc2 = oc
 sc2 = sc
-if npol gt 2 then re2 = re
-if npol gt 3 then begin
-  im2 = im
-  if keyword_set(rcs) then begin
-    S12 = S1
-    S22 = S2
-    S32 = S3
-    S42 = S4
-  endif
-endif
 if n_elements(smooth) gt 0 then begin
+  specsm = specs
   if smooth ge 2 then begin
+    for i=0, npol-1 do begin
+      specsm[i,*] = smooth(specs[i,*], smooth)
+    endfor
     oc2 = smooth(oc2,smooth)
     sc2 = smooth(sc2,smooth)
-    if npol gt 2 then re2 = smooth(re2,smooth)
-    if npol gt 3 then begin
-      im2 = smooth(im2,smooth)
-      if keyword_set(rcs) then begin
-        S12 = smooth(S12,smooth)
-        S22 = smooth(S22,smooth)
-        S32 = smooth(S32,smooth)
-        S42 = smooth(S42,smooth)
-      endif
-    endif
     if not keyword_set(rcs) then begin
       oc2 = oc2*sqrt(smooth)
       sc2 = sc2*sqrt(smooth)
-      if npol gt 2 then re2 = re2*sqrt(smooth)
-      if npol gt 3 then im2 = im2*sqrt(smooth)
     endif
   endif
+  specs = specsm
 endif
 
 ; Prepare the polarization ratio ("mu") plot if desired
@@ -585,28 +576,14 @@ endelse
 bin1 = 0L > (bin0 + posfr*round(xr[0]/df))
 bin2 = (ndata - 1) < (bin0 + posfr*round(xr[1]/df))
 
-if total(plotpol) eq 2 then begin
-  plottedvalues = [oc2[bin1:bin2], sc2[bin1:bin2]]
-endif else if chan eq 1 then begin
-  plottedvalues = oc2[bin1:bin2]
-endif else if chan eq 2 then begin
-  plottedvalues = sc2[bin1:bin2]
-endif else if chan eq 3 then begin
-  plottedvalues = re2[bin1:bin2]
-endif else if chan eq 4 then begin
-  plottedvalues = im2[bin1:bin2]
-endif else if chan eq -1 then begin
-  plottedvalues = S12[bin1:bin2]
-endif else if chan eq -2 then begin
-  plottedvalues = S22[bin1:bin2]
-endif else if chan eq -3 then begin
-  plottedvalues = S32[bin1:bin2]
-endif else if chan eq -4 then begin
-  plottedvalues = S42[bin1:bin2]
-endif else begin
+if total(plotpol) lt 1 then begin
   printf, 'No channels to plot'
   return
-endelse
+endif
+plottedvalues = []
+for i = 0, npol-1 do begin
+  if plotpol[i] then plottedvalues = [plottedvalues, reform(specs[i,bin1:bin2])]
+endfor
 maxy = max(plottedvalues)
 miny = min(plottedvalues)
 yspan = maxy - miny
@@ -615,18 +592,18 @@ miny = miny - 0.08*yspan
 
 ; Get the y-limits for the +/- one-standard-deviation line
 
-if keyword_set(rcs) then begin
-  oc_sd_miny = (-oc_sdev/df) > miny
-  oc_sd_maxy = ( oc_sdev/df) < maxy
-  sc_sd_miny = (-sc_sdev/df) > miny
-  sc_sd_maxy = ( sc_sdev/df) < maxy
-endif else begin
-  oc_sd_miny = -1.0 > miny
-  oc_sd_maxy =  1.0 < maxy
-  sc_sd_miny = -1.0 > miny
-  sc_sd_maxy =  1.0 < maxy
-endelse
-
+sdmins = intarr(npol)
+sdmaxs = intarr(npol)
+for i = 0, npol-1 do begin
+  if keyword_set(rcs) then begin
+    sdmins[i] = (-sdev[i]/df) > miny
+    sdmaxs[i] = ( sdev[i]/df) < maxy
+  endif else begin
+    sdmins[i] =  -1 > miny
+    sdmaxs[i] =   1 > maxy
+  endelse
+endfor
+    
 ; Get the maximum and minimum frequencies (for plotting the baseline).
 
 if posfr eq 1 then begin
@@ -651,48 +628,47 @@ endif else begin
   axis_charsize = 2
   label_charsize = 1.2
 endelse
-xtitlestring = strarr(3)
+xtitlestring = strarr(nplots)
 xtitlestring[nplots-1] = 'Doppler frequency  (Hz)'
 if keyword_set(rcs) then begin
   ytitlestring = 'cross section density  (km^2 / Hz)'
 endif else begin
   ytitlestring = 'noise standard deviations'
 endelse
-if plotpol[0] then begin
-  plot,f,oc2,xrange=xr,yrange=[miny,maxy], $
-       xtitle=xtitlestring[0],ytitle=ytitlestring, $
-       charsize=axis_charsize,_extra=_ext
-  if miny lt 0 and maxy gt 0 then oplot,[fmin,fmax],[0,0]
-  if (miny lt -1 and maxy ge 0) or (miny le 0 and maxy gt 1) then begin
-    oplot,[0,0],[oc_sd_miny,oc_sd_maxy],thick=2
+
+firstplot = 1
+polstrings = ""
+for i = 0, npol-1 do begin
+  if plotpol[i] then begin
+    polstrings = polstrings + (firstplot ? '' : ', ') + chanstrings[i]
+    firstplot = 0
   endif
-  if (keyword_set(separate) or not plotpol[1]) then begin
-    xyouts,xlabel,ylabel,'OC',alignment=0.5,charsize=label_charsize
-  endif else begin
-    oplot,f,sc2,linestyle=1
-    xyouts,xlabel,ylabel,'OC, SC',alignment=0.5,charsize=label_charsize
-  endelse
-endif
-if plotpol[1] and (keyword_set(separate) or not plotpol[0]) then begin
-  plot,f,sc2,xrange=xr,yrange=[miny,maxy], $
-       xtitle=xtitlestring[1],ytitle=ytitlestring, $
-       charsize=axis_charsize,_extra=_ext
-  if miny lt 0 and maxy gt 0 then oplot,[fmin,fmax],[0,0]
-  if (miny lt -1 and maxy ge 0) or (miny le 0 and maxy gt 1) then begin
-    oplot,[0,0],[sc_sd_miny,sc_sd_maxy],thick=2
+endfor
+  
+firstplot = 1
+ls = 0
+for i= 0, npol-1 do begin
+  if plotpol[i] then begin
+    if firstplot || keyword_set(separate) then begin
+      firstplot = 0
+      plot,f,specs[i,*],xrange=xr,yrange=[miny,maxy], $
+           xtitle=xtitlestring[0],ytitle=ytitlestring, $
+           charsize=axis_charsize,_extra=_ext
+      if miny lt 0 and maxy gt 0 then oplot,[fmin,fmax],[0,0]
+      if (miny lt -1 and maxy ge 0) or (miny le 0 and maxy gt 1) then begin
+        oplot,[0,0],[sdmins[i], sdmaxs[i]],thick=2
+      endif 
+      if keyword_set(separate) then begin
+        xyouts,xlabel,ylabel,chanstrings[i],alignment=0.5,charsize=label_charsize
+      endif else begin
+        xyouts,xlabel,ylabel,polstrings,alignment=0.5,charsize=label_charsize
+      endelse
+    endif else begin
+      oplot, f, specs[i,*], linestyle=ls
+    endelse
+    ls = ls + 1
   endif
-  xyouts,xlabel,ylabel,'SC',alignment=0.5,charsize=label_charsize
-endif
-if plotpol[4] then begin
-  plot,f[bin1:bin2],plottedvalues,xrange=xr,yrange=[miny,maxy], $
-       xtitle=xtitlestring[0],ytitle=ytitlestring, $
-       charsize=axis_charsize,_extra=_ext
-  if miny lt 0 and maxy gt 0 then oplot,[fmin,fmax],[0,0]
-  if (miny lt -1 and maxy ge 0) or (miny le 0 and maxy gt 1) then begin
-    oplot,[0,0],[oc_sd_miny,oc_sd_maxy],thick=2
-  endif
-    xyouts,xlabel,ylabel,polstrings[chan+4],alignment=0.5,charsize=label_charsize
-endif
+endfor
 
 ; Create the polarization ratio plot if requested
 
@@ -715,7 +691,7 @@ if domu then begin
     miny = miny - 0.08*yspan
   endelse
   plot,f,ratio,xrange=xr,yrange=[miny,maxy], $
-       xtitle=xtitlestring[2],charsize=axis_charsize,_extra=_ext
+       xtitle=xtitlestring[nplots-1],charsize=axis_charsize,_extra=_ext
   oplot,[fmin,fmax],[0,0],linestyle=1
   ylabel = miny + 0.85*(maxy - miny)
   xyouts,xlabel,ylabel,'SC/OC',alignment=0.5,charsize=label_charsize

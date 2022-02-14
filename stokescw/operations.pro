@@ -16024,6 +16024,150 @@ endelse
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+pro stokes,stack=st,txpol=txpol,rot=rot,help=help
+
+; Create Stokes sectra from the loaded pair and push the new (wide) spectrum
+; on to the stack.
+;
+; The spectrum's sdev tag will be updated but all other tags and extra tags
+; will be taken from the OC half of the pair.  In particular, the jcp tag
+; will have a value of 1, indicating an OC spectrum; but a comment will be
+; added indicating that it's actually a total-power spectrum.
+;
+; If /stack is set then do this for each pair in the stack
+; rather than for the loaded pair
+
+common loadedBlock,loadedi,loaded1,loaded
+common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
+
+if n_params() ne 0 or keyword_set(help) then begin
+  print,' '
+  print,'stokes[,txpol=txpol][,/stack][,/help]'
+  print,' '
+  print, 'Add Stokes (S1 .. S4) polarizations to the loaded spectrum.'
+  print,'push it onto the single-channel stack.  These channels will update the'
+  print,'sdev tag but will keep the OC values for all other tags and extra tags.'
+  print,' '
+  print,"txpol = 'lcp' or 'rcp' default is Arecibo with txpol=lcp, so OC is rcp."
+  print," linear tx not yet implemented"
+  print,'It will have tags of 5..8 for jcp.'
+  print,' '
+  print,'If /stack is set, create a total-power sum for each pair in the stack'
+  print,'rather than for the loaded pair.'
+  print,' '
+  return
+endif
+
+if n_elements(txpol) eq 0 then txp = 1 else begin
+  if (tolower(txpol))[0] eq 'l' then begin
+    txp = 1
+  endif else if (tolower(txpol))[0] eq 'r' then begin
+    txp = -1
+  endif else begin
+    print, "txpol must be 'lcp' or 'rcp'"
+    return
+  endelse ; bad
+endelse
+
+if not keyword_set(st) then begin
+
+  ; Sum polarizations for the loaded pair
+
+  if (*loaded).ndata le 2 then begin
+    print,'ERROR in stokes: No pair is loaded'
+    return
+  endif
+  nuse = 1L
+endif else begin
+
+  ; Sum polarizations for every pair in the stack
+
+  if nstack eq 0 then begin
+    print,'ERROR in stokes: The pair stack is empty'
+    return
+  endif
+  nuse = nstack
+endelse
+
+; if we're doing the stack, Store the loaded pair so we can use that "space" and reload the pair later on
+
+if keyword_set(st) then storeloaded = ptr_new(*loaded)
+
+; Loop through the pair(s) to be summed
+
+for n=1L,nuse do begin
+
+  ; If the stack keyword is being used, load stack pair n
+  ; so that the loaded pair contains the OC tags we need
+
+  if keyword_set(st) then load,n
+
+  ; Get a few elements of this pair
+
+  pair = (*loaded).spec
+  tags = (*loaded).tags
+  nspec =(*loaded).ndata
+  npol = n_elements(tags)
+  sdev = tags.sdev
+  if npol lt 4 then begin
+    print, "ERROR in stokes: Need complex input channels to compute Stokes"
+    return
+  end
+
+  ; Compute the total-power sdev and spectrum
+
+  rcsspec = pair[0:3,*] * (sdev[0:3] # replicate(1, nspec))
+  s = rcsspec
+  stags = tags[0:3]
+  stags.sdev = 1.0
+
+  s[0,*] = rcsspec[0,*] + rcsspec[1,*]
+  stags[0].jcp = 5
+
+  s[1,*] = 2 * rcsspec[2,*]
+  stags[1].jcp = 6
+
+  s[2,*] = -2 * rcsspec[3,*]
+  stags[2].jcp = 7
+  
+  s[3,*] = (rcsspec[0,*] - rcsspec[1,*]) * txp
+  stags[3].jcp = 8
+
+ ; Create a new structure that may (probably is) be a different size from the old one.
+
+  newStruct = {freq:(*loaded).freq, spec:[(*loaded).spec[0:3,*], s], $
+            tags:[(*loaded).tags[0:3],stags], extratags:(*loaded).extratags, $
+            ndata:(*loaded).ndata, ntags:(*loaded).ntags, $
+            nextra:(*loaded).nextra, tname:(*loaded).tname}
+
+  *loaded = newStruct
+  if keyword_set(st) then begin
+    ptr_free,st[n-1]
+    *st[n-1] = *loaded
+  endif
+
+endfor
+
+if keyword_set(st) then begin
+; Reload the pair that was there at the start
+
+  *loaded = *storeloaded
+  ptr_free,storeloaded
+endif
+
+; Tell the user what was done
+
+if keyword_set(st) then begin
+  print,' spectra for stack pairs 1 - '+strtrim(string(nstack),2), +$
+        ' add Stokes channels'
+endif else begin
+  print,'Loaded pair added Stokes channels'
+endelse
+
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro shiftspec,mode,fshift,roundshift=roundshift,full=full,chan=chan,stack=st, $
               silent=silent,help=help
 
