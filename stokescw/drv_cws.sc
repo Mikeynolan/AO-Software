@@ -1,4 +1,5 @@
 #! /bin/tcsh -f
+set echo
 # new usage:
 # drv_cw.sc controlfile firstscan lastscan
 #
@@ -56,7 +57,20 @@
 #
 #set verbose
 #
+
 set stem = "/pkg/aosoft/fedora4/x86_64/bin"
+set swapcmd='cat'
+set argv=`getopt "s" $*`
+set errcode = $?
+while (1)
+  switch ($1)
+    case -s:
+           set swapcmd="$stem/byteswap"; shift; breaksw
+    case --:
+           shift; break
+  endsw
+end
+   
 set parms=($*)              
 if ( $#parms == 0 || $#parms > 3 ) then
   echo "Usage: drv_cw.sc <control file> fstart fend"
@@ -181,7 +195,8 @@ while ( $fifoToUse <= $numchan )
       $stem/fftfilter -d f -n $fftlen -s $numskip > $ff
       $stem/power_ao < $ff |\
       $stem/avgdata -d r4 -g $fftlen -h $nfftave $ignore |\
-      $stem/rotate -i $fftlen -r $torotate >> $outfile
+      $stem/rotate -i $fftlen -r $torotate > $tdir/tmpout
+      $swapcmd $tdir/tmpout >> $outfile
     breaksw
     case 3:
     case 4:
@@ -191,7 +206,8 @@ while ( $fifoToUse <= $numchan )
       $stem/stokes $f1 $f2  |\
       $stem/selectpnts -f $which -s 2 |\
       $stem/avgdata -d r4 -g $fftlen -h $nfftave $ignore |\
-      $stem/rotate -i $fftlen -r $torotate >> $outfile
+      $stem/rotate -i $fftlen -r $torotate > $tdir/tmpout
+      $swapcmd $tdir/tmpout >> $outfile
     endsw
       echo "Done with scan ${scannum}"
       @ scannum++
