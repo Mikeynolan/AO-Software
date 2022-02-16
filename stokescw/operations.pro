@@ -8924,6 +8924,7 @@ pro sumspec,group=g,ming=ming,maxg=maxg,arrayg=ag,all=all, $
 ; 25 Jun 2006: Frequency refers to center of bin, not left edge
  
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
 
 maxextratags = 1000
 too_low_sdev = 1.0d-10
@@ -9048,7 +9049,8 @@ endfor
 
 n_in = lonarr(nsums)
 newndata = lonarr(nsums)
-newtags = replicate(blanktags1(), 2, nsums)
+newnpol = lonarr(nsums)
+newtags = replicate(blanktags1(), maxchan, nsums)
 newtags.jsnr1 = 999999999L
 newtags.jsnr2 = -999999999L
 newntags = lonarr(nsums)
@@ -9058,21 +9060,21 @@ newnextra = lonarr(nsums)
 newtname = strarr(nsums)
 timezone = strarr(nsums)
 timezoneOK = intarr(nsums) + 1L
-sumweights = dblarr(2,nsums)
-sumvariance = dblarr(2,nsums)
-rmsc_sum = dblarr(2,nsums)
-phase1_mean = fltarr(2,nsums)
-phase2_mean = fltarr(2,nsums)
-phase1_min = fltarr(2,nsums) + 999.9
-phase1_max = fltarr(2,nsums) - 999.9
-phase2_min = fltarr(2,nsums) + 999.9
-phase2_max = fltarr(2,nsums) - 999.9
-az1_mean = fltarr(2,nsums)
-az2_mean = fltarr(2,nsums)
-az1_min = fltarr(2,nsums) + 999.9
-az1_max = fltarr(2,nsums) - 999.9
-az2_min = fltarr(2,nsums) + 999.9
-az2_max = fltarr(2,nsums) - 999.9
+sumweights = dblarr(maxchan,nsums)
+sumvariance = dblarr(maxchan,nsums)
+rmsc_sum = dblarr(maxchan,nsums)
+phase1_mean = fltarr(maxchan,nsums)
+phase2_mean = fltarr(maxchan,nsums)
+phase1_min = fltarr(maxchan,nsums) + 999.9
+phase1_max = fltarr(maxchan,nsums) - 999.9
+phase2_min = fltarr(maxchan,nsums) + 999.9
+phase2_max = fltarr(maxchan,nsums) - 999.9
+az1_mean = fltarr(maxchan,nsums)
+az2_mean = fltarr(maxchan,nsums)
+az1_min = fltarr(maxchan,nsums) + 999.9
+az1_max = fltarr(maxchan,nsums) - 999.9
+az2_min = fltarr(maxchan,nsums) + 999.9
+az2_max = fltarr(maxchan,nsums) - 999.9
 jdstart = dblarr(nsums) + 999999999L
 jdmean = dblarr(nsums)
 calmean = strarr(nsums)
@@ -9125,6 +9127,7 @@ for n=0L,nstack-1 do begin
     nextra = (*stack[n]).nextra
     tname = (*stack[n]).tname
     npol = n_elements(tags)
+    np = npol-1 ; for indexing
 
     ; If this is the first pair contributing to this sum, initialize some values
 
@@ -9167,20 +9170,21 @@ for n=0L,nstack-1 do begin
 
       newndata[nsum] = ndata
       newntags[nsum] = ntags
-      newtags[*,nsum].xjcen = tags.xjcen
-      newtags[*,nsum].posfr = tags.posfr
-      newtags[*,nsum].dfreq = tags.dfreq
-      newtags[*,nsum].doppl = tags.doppl
-      newtags[*,nsum].zepch = tags.zepch
-      newtags[*,nsum].obs = tags.obs
-      newtags[*,nsum].itar = tags.itar
-      newtags[*,nsum].lfft = tags.lfft
-      newtags[*,nsum].igw = tags.igw
-      newtags[*,nsum].kpts = tags.kpts
-      newtags[*,nsum].nfreq = tags.nfreq
-      newtags[*,nsum].frstep = tags.frstep
-      newtags[*,nsum].color = tags.color
-      newtags[*,nsum].freq1 = tags.freq1
+      newnpol[nsum]  = npol
+      newtags[0:np,nsum].xjcen = tags.xjcen
+      newtags[0:np,nsum].posfr = tags.posfr
+      newtags[0:np,nsum].dfreq = tags.dfreq
+      newtags[0:np,nsum].doppl = tags.doppl
+      newtags[0:np,nsum].zepch = tags.zepch
+      newtags[0:np,nsum].obs = tags.obs
+      newtags[0:np,nsum].itar = tags.itar
+      newtags[0:np,nsum].lfft = tags.lfft
+      newtags[0:np,nsum].igw = tags.igw
+      newtags[0:np,nsum].kpts = tags.kpts
+      newtags[0:np,nsum].nfreq = tags.nfreq
+      newtags[0:np,nsum].frstep = tags.frstep
+      newtags[0:np,nsum].color = tags.color
+      newtags[0:np,nsum].freq1 = tags.freq1
       for k=0L,nextra-1 do begin
         for j=0L,3 do newextratags[nsum,k].(j) = extratags[k].(j)
       endfor
@@ -9216,15 +9220,19 @@ for n=0L,nstack-1 do begin
       print,'ERROR in sumspec: Pairs with different numbers of tags contribute to sum #', $
             nsum+1,format='(a,i0)'
       return
-    endif else if total(pmask # (tags.xjcen ne newtags[*,nsum].xjcen)) gt 0 then begin
+    endif else if npol ne newnpol[nsum] then begin
+      print,'ERROR in sumspec: Pairs with different numbers of pols contribute to sum #', $
+            nsum+1,format='(a,i0)'
+      return
+    endif else if total(pmask # (tags.xjcen ne newtags[0:np,nsum].xjcen)) gt 0 then begin
       print,'ERROR in sumspec: Pairs with different xjcen tags contribute to sum #',nsum+1, $
             format='(a,i0)'
       return
-    endif else if total(pmask # (tags.posfr ne newtags[*,nsum].posfr)) gt 0 then begin
+    endif else if total(pmask # (tags.posfr ne newtags[0:np,nsum].posfr)) gt 0 then begin
       print,'ERROR in sumspec: Pairs with different posfr tags contribute to sum #',nsum+1, $
             format='(a,i0)'
       return
-    endif else if total(pmask # (tags.dfreq ne newtags[*,nsum].dfreq)) gt 0 then begin
+    endif else if total(pmask # (tags.dfreq ne newtags[0:np,nsum].dfreq)) gt 0 then begin
       print,'ERROR in sumspec: Pairs with different dfreq tags contribute to sum #',nsum+1, $
             format='(a,i0)'
       return
@@ -9246,10 +9254,10 @@ for n=0L,nstack-1 do begin
     ; Accumulate some parameters
 
     weight = (keyword_set(noweight)) ? dblarr(npol) + 1.d0 : 1/(1.0D*tags.sdev)^2
-    sumweights[*,nsum] = sumweights[*,nsum] + weight
-    rmsc_sum[*,nsum] = rmsc_sum[*,nsum] + 1/(1.0D*tags.rmsc)^2
-    newtags[*,nsum].nffts = newtags[*,nsum].nffts + tags.nffts
-    newtags[*,nsum].tau = newtags[*,nsum].tau + tags.tau
+    sumweights[0:np,nsum] = sumweights[0:np,nsum] + weight
+    rmsc_sum[0:np,nsum] = rmsc_sum[0:np,nsum] + 1/(1.0D*tags.rmsc)^2
+    newtags[0:np,nsum].nffts = newtags[0:np,nsum].nffts + tags.nffts
+    newtags[0:np,nsum].tau = newtags[0:np,nsum].tau + tags.tau
 
     ; Work with two versions of the phase and the azimuth,
     ; using ranges [0,360) vs. [180,540)
@@ -9261,20 +9269,20 @@ for n=0L,nstack-1 do begin
 
     ; Look for minimum or maximum values for some parameters
 
-    newtags[*,nsum].jsnr1 = newtags[*,nsum].jsnr1 < tags.jsnr1
-    newtags[*,nsum].jsnr2 = newtags[*,nsum].jsnr2 > tags.jsnr2
+    newtags[0:np,nsum].jsnr1 = newtags[0:np,nsum].jsnr1 < tags.jsnr1
+    newtags[0:np,nsum].jsnr2 = newtags[0:np,nsum].jsnr2 > tags.jsnr2
     jd_in = getextra('jdstart', stack=(n+1))
     jdstart[nsum] = (notnull(jd_in)) ? (jdstart[nsum] < jd_in) : -999999999L
     jd_in = getextra('jdend', stack=(n+1))
     jdend[nsum] = (notnull(jd_in)) ? (jdend[nsum] > jd_in) : 999999999L
-    phase1_min[*,nsum] = phase1_min[*,nsum] < phase1
-    phase1_max[*,nsum] = phase1_max[*,nsum] > phase1
-    phase2_min[*,nsum] = phase2_min[*,nsum] < phase2
-    phase2_max[*,nsum] = phase2_max[*,nsum] > phase2
-    az1_min[*,nsum] = az1_min[*,nsum] < az1
-    az1_max[*,nsum] = az1_max[*,nsum] > az1
-    az2_min[*,nsum] = az2_min[*,nsum] < az2
-    az2_max[*,nsum] = az2_max[*,nsum] > az2
+    phase1_min[0:np,nsum] = phase1_min[0:np,nsum] < phase1
+    phase1_max[0:np,nsum] = phase1_max[0:np,nsum] > phase1
+    phase2_min[0:np,nsum] = phase2_min[0:np,nsum] < phase2
+    phase2_max[0:np,nsum] = phase2_max[0:np,nsum] > phase2
+    az1_min[0:np,nsum] = az1_min[0:np,nsum] < az1
+    az1_max[0:np,nsum] = az1_max[0:np,nsum] > az1
+    az2_min[0:np,nsum] = az2_min[0:np,nsum] < az2
+    az2_max[0:np,nsum] = az2_max[0:np,nsum] > az2
     dist_in = getextra('distmin', stack=(n+1))
     dist_min[nsum] = (notnull(dist_in)) ? (dist_min[nsum] < dist_in) : -999999.9
     dist_in = getextra('distmax', stack=(n+1))
@@ -9312,16 +9320,16 @@ for n=0L,nstack-1 do begin
 
     ; Construct weighted means of some parameters
 
-    newtags[*,nsum].elev = newtags[*,nsum].elev + weight*tags.elev
-    newtags[*,nsum].rttim = newtags[*,nsum].rttim + weight*tags.rttim
-    newtags[*,nsum].trpwr = newtags[*,nsum].trpwr + weight*tags.trpwr
-    newtags[*,nsum].tsys = newtags[*,nsum].tsys + weight*tags.tsys
-    newtags[*,nsum].gain = newtags[*,nsum].gain + weight*tags.gain
-    sumvariance[*,nsum] = sumvariance[*,nsum] + (1.0D*tags.sdev)^2
-    phase1_mean[*,nsum] = phase1_mean[*,nsum] + weight*phase1
-    phase2_mean[*,nsum] = phase2_mean[*,nsum] + weight*phase2
-    az1_mean[*,nsum] = az1_mean[*,nsum] + weight*az1
-    az2_mean[*,nsum] = az2_mean[*,nsum] + weight*az2
+    newtags[0:np,nsum].elev = newtags[0:np,nsum].elev + weight*tags.elev
+    newtags[0:np,nsum].rttim = newtags[0:np,nsum].rttim + weight*tags.rttim
+    newtags[0:np,nsum].trpwr = newtags[0:np,nsum].trpwr + weight*tags.trpwr
+    newtags[0:np,nsum].tsys = newtags[0:np,nsum].tsys + weight*tags.tsys
+    newtags[0:np,nsum].gain = newtags[0:np,nsum].gain + weight*tags.gain
+    sumvariance[0:np,nsum] = sumvariance[0:np,nsum] + (1.0D*tags.sdev)^2
+    phase1_mean[0:np,nsum] = phase1_mean[0:np,nsum] + weight*phase1
+    phase2_mean[0:np,nsum] = phase2_mean[0:np,nsum] + weight*phase2
+    az1_mean[0:np,nsum] = az1_mean[0:np,nsum] + weight*az1
+    az2_mean[0:np,nsum] = az2_mean[0:np,nsum] + weight*az2
     if timezoneOK[nsum] then begin
       tempzone = getextra('timezone',stack=(n+1))
       timezoneOK[nsum] = (tempzone eq timezone[nsum])
@@ -9364,28 +9372,28 @@ for n=0L,nstack-1 do begin
     ; Check whether nonessential tags, such as doppl (tx offset), have the same values
     ; for all pairs contributing to this sum.  If not, reset that tag to a dummy value.
 
-    if total(pmask # (tags.doppl ne newtags[*,nsum].doppl)) gt 0 then $
-           newtags[*,nsum].doppl = 0.0
-    if total(pmask # (tags.zepch ne newtags[*,nsum].zepch)) gt 0 then $
-           newtags[*,nsum].zepch = 0.0
-    if total(pmask # (tags.obs ne newtags[*,nsum].obs)) gt 0 then $
-           newtags[*,nsum].obs = 0L
-    if total(pmask # (tags.itar ne newtags[*,nsum].itar)) gt 0 then $
-           newtags[*,nsum].itar = 0L
-    if total(pmask # (tags.lfft ne newtags[*,nsum].lfft)) gt 0 then $
-           newtags[*,nsum].lfft = 0L
-    if total(pmask # (tags.igw ne newtags[*,nsum].igw)) gt 0 then $
-           newtags[*,nsum].igw = 0L
-    if total(pmask # (tags.kpts ne newtags[*,nsum].kpts)) gt 0 then $
-           newtags[*,nsum].kpts = 0L
-    if total(pmask # (tags.nfreq ne newtags[*,nsum].nfreq)) gt 0 then $
-           newtags[*,nsum].nfreq = 0L
-    if total(pmask # (tags.frstep ne newtags[*,nsum].frstep)) gt 0 then $
-           newtags[*,nsum].frstep = 0.0
-    if total(pmask # (tags.color ne newtags[*,nsum].color)) gt 0 then $
-           newtags[*,nsum].color = -1L
-    if total(pmask # (tags.freq1 ne newtags[*,nsum].freq1)) gt 0 then $
-           newtags[*,nsum].freq1 = 0.0
+    if total(pmask # (tags.doppl ne newtags[0:np,nsum].doppl)) gt 0 then $
+           newtags[0:np,nsum].doppl = 0.0
+    if total(pmask # (tags.zepch ne newtags[0:np,nsum].zepch)) gt 0 then $
+           newtags[0:np,nsum].zepch = 0.0
+    if total(pmask # (tags.obs ne newtags[0:np,nsum].obs)) gt 0 then $
+           newtags[0:np,nsum].obs = 0L
+    if total(pmask # (tags.itar ne newtags[0:np,nsum].itar)) gt 0 then $
+           newtags[0:np,nsum].itar = 0L
+    if total(pmask # (tags.lfft ne newtags[0:np,nsum].lfft)) gt 0 then $
+           newtags[0:np,nsum].lfft = 0L
+    if total(pmask # (tags.igw ne newtags[0:np,nsum].igw)) gt 0 then $
+           newtags[0:np,nsum].igw = 0L
+    if total(pmask # (tags.kpts ne newtags[0:np,nsum].kpts)) gt 0 then $
+           newtags[0:np,nsum].kpts = 0L
+    if total(pmask # (tags.nfreq ne newtags[0:np,nsum].nfreq)) gt 0 then $
+           newtags[0:np,nsum].nfreq = 0L
+    if total(pmask # (tags.frstep ne newtags[0:np,nsum].frstep)) gt 0 then $
+           newtags[0:np,nsum].frstep = 0.0
+    if total(pmask # (tags.color ne newtags[0:np,nsum].color)) gt 0 then $
+           newtags[0:np,nsum].color = -1L
+    if total(pmask # (tags.freq1 ne newtags[0:np,nsum].freq1)) gt 0 then $
+           newtags[0:np,nsum].freq1 = 0.0
 
     ; Go through the array of extra tags and find the ones which are present and have
     ; the same format and value for all pairs contributing to this sum: those are the
@@ -9458,23 +9466,24 @@ for nsum=0L,nsums-1 do begin
     ; by dividing by sdev = 1/sqrt(sum of all weights), is equivalent
     ; to multiplying by sdev
 
+    np = newnpol[nsum]-1
     if keyword_set(noweight) then begin
-      sdev = sqrt(sumvariance[*,nsum])
+      sdev = sqrt(sumvariance[0:np,nsum])
       (*wsum[nsum]).spec = float( (*wsum[nsum]).spec / (sdev # replicate(1.0D,newndata[nsum])) )
-      newtags[*,nsum].sdev = sdev/n_in[nsum]
+      newtags[0:np,nsum].sdev = sdev/n_in[nsum]
     endif else begin
-      sdev = 1.0/sqrt(sumweights[*,nsum])
+      sdev = 1.0/sqrt(sumweights[0:np,nsum])
       (*wsum[nsum]).spec = (sdev # replicate(1.0,newndata[nsum])) * (*wsum[nsum]).spec
-      newtags[*,nsum].sdev = sdev
+      newtags[0:np,nsum].sdev = sdev
     endelse
 
     ; Complete the weighted means for various tags
 
-    newtags[*,nsum].elev = newtags[*,nsum].elev / sumweights[*,nsum]
-    newtags[*,nsum].rttim = newtags[*,nsum].rttim / sumweights[*,nsum]
-    newtags[*,nsum].trpwr = newtags[*,nsum].trpwr / sumweights[*,nsum]
-    newtags[*,nsum].tsys = newtags[*,nsum].tsys / sumweights[*,nsum]
-    newtags[*,nsum].gain = newtags[*,nsum].gain / sumweights[*,nsum]
+    newtags[0:np,nsum].elev = newtags[0:np,nsum].elev / sumweights[0:np,nsum]
+    newtags[0:np,nsum].rttim = newtags[0:np,nsum].rttim / sumweights[0:np,nsum]
+    newtags[0:np,nsum].trpwr = newtags[0:np,nsum].trpwr / sumweights[0:np,nsum]
+    newtags[0:np,nsum].tsys = newtags[0:np,nsum].tsys / sumweights[0:np,nsum]
+    newtags[0:np,nsum].gain = newtags[0:np,nsum].gain / sumweights[0:np,nsum]
     if jdmeanOK[nsum] then jdmean[nsum] = jdmean[nsum] / sumweights[0,nsum]
     if dist_meanOK[nsum] then dist_mean[nsum] = dist_mean[nsum] / sumweights[0,nsum]
     if ra_meanOK[nsum] then begin
@@ -9491,10 +9500,10 @@ for nsum=0L,nsums-1 do begin
     ; For example, a bunch of phases between 330-360 and 0-40 should yield a
     ; mean phase close to 360/0, not 180.  Ditto azimuth.
 
-    phase1_range = phase1_max[*,nsum] - phase1_min[*,nsum]
-    phase2_range = phase2_max[*,nsum] - phase2_min[*,nsum]
-    az1_range = az1_max[*,nsum] - az1_min[*,nsum]
-    az2_range = az2_max[*,nsum] - az2_min[*,nsum]
+    phase1_range = phase1_max[0:np,nsum] - phase1_min[0:np,nsum]
+    phase2_range = phase2_max[0:np,nsum] - phase2_min[0:np,nsum]
+    az1_range = az1_max[0:np,nsum] - az1_min[0:np,nsum]
+    az2_range = az2_max[0:np,nsum] - az2_min[0:np,nsum]
     for ch=1,npol do begin
       if sumpol[ch-1] then begin
         if phase1_range[ch-1] gt phase2_range[ch-1] then begin
@@ -9513,11 +9522,11 @@ for nsum=0L,nsums-1 do begin
 
     ; Set the jcp (polarization) tags
 
-    newtags[*,nsum].jcp = indgen(npol)+1 ; makes assumptions about what's there.
+    newtags[0:np,nsum].jcp = indgen(npol)+1 ; makes assumptions about what's there.
 
     ; Get the calculated fractional rms noise deviation
 
-    newtags[*,nsum].rmsc = 1/sqrt(rmsc_sum[*,nsum])
+    newtags[0:np,nsum].rmsc = 1/sqrt(rmsc_sum[0:np,nsum])
 
     ; Get the measured rms noise
 
@@ -9546,13 +9555,13 @@ for nsum=0L,nsums-1 do begin
       rctime = round( 86400*((jdmean[nsum] - 0.5D) mod 1) )  ;  nearest sec
       jduse = jd_midnight + rctime/86400.0
       caldat_roundsec,jdmean[nsum],mon,day,year,hr,min,sec
-      newtags[*,nsum].iyy = year
-      newtags[*,nsum].imm = mon
-      newtags[*,nsum].idd = day
-      newtags[*,nsum].rchour = hr
-      newtags[*,nsum].rcmin = min
-      newtags[*,nsum].rcsec = sec
-      newtags[*,nsum].rcnsec = 0L
+      newtags[0:np,nsum].iyy = year
+      newtags[0:np,nsum].imm = mon
+      newtags[0:np,nsum].idd = day
+      newtags[0:np,nsum].rchour = hr
+      newtags[0:np,nsum].rcmin = min
+      newtags[0:np,nsum].rcsec = sec
+      newtags[0:np,nsum].rcnsec = 0L
       calmean[nsum] = string(year,format='(i4)') + ' '     $
                       + monthnames[mon-1] + ' '            $
                       + string(day,format='(i2.2)') + ' '  $
@@ -9561,9 +9570,9 @@ for nsum=0L,nsums-1 do begin
                       + string(sec,format='(i2.2)') + ' '  $
                       + timezone[nsum]
     endif else begin
-      newtags[*,nsum].iyy = 1L
-      newtags[*,nsum].imm = 1L  ;  so showstack can call it 'Jan'
-      newtags[*,nsum].idd = 1L
+      newtags[0:np,nsum].iyy = 1L
+      newtags[0:np,nsum].imm = 1L  ;  so showstack can call it 'Jan'
+      newtags[0:np,nsum].idd = 1L
       if jdmeanOK[nsum] then begin
         print,'WARNING in sumspec: No time information output for sum #', $
               nsum+1,format='(a,i0)'
@@ -9598,7 +9607,7 @@ for nsum=0L,nsums-1 do begin
 
       stackStruc = {group:newgroupnumber[nsum], $
                     spec:(*wsum[nsum]).spec, $
-                    tags:newtags[*,nsum], $
+                    tags:newtags[0:np,nsum], $
                     extratags:newextratags[nsum,0:newnextra[nsum]-1], $ 
                     ndata:newndata[nsum], $
                     ntags:newntags[nsum], $
