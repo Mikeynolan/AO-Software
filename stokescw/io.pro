@@ -3681,6 +3681,96 @@ if pairSpectra then ptr_free,stackRead
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+pro cw2csv,outfile,stack=n,chan=chan,help=help,_extra=_ext
+
+; Write one channel of spectral data to a dat (ASCII text) file:
+; -- Do this for the loaded pair, or else for stack pair n
+;         if the stack keyword is set
+; -- Do this for the OC spectrum, unless the /sc flag is set
+
+common loadedBlock,loadedi,loaded1,loaded
+common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
+
+if n_params() ne 1 or keyword_set(help) then begin
+  print,'cw2csv,outfile[,/overwrite][,/append][,stack=n][,chan=chan][,/help]'
+  print,' '
+  print,'Write spectral data to a csv (ASCII text) file'
+  print,' '
+  print,'   Do this for the loaded pair, or else for stack pair n if the stack keyword is used'
+  print,' '
+  print,'   Do this for all spectrum, unless chan is set. Chan can be a list like [1,2,4]'
+  print,' '
+  return
+endif else if size(outfile, /type) ne 7 then begin
+  print,' '
+  print,'cw2csv,outfile[,/overwrite][,/append][,stack=n][,/sc][,/help]'
+  print,'Make sure that outfile is a quoted string!'
+  print,' '
+  return
+endif else if n_elements(n) gt 0 then begin
+  if nstack eq 0 then begin
+    print,'ERROR in cw2csv: The pair stack is empty, so nothing can be written to disk'
+    return
+  endif else if n le 0 then begin
+    print,'ERROR in cw2csv: Must have n >= 1'
+    return
+  endif else if n gt nstack then begin
+    print,'ERROR in cw2csv: There are only ',nstack,' pairs in the stack', $
+          format='(a,i0,a)'
+    return
+  endif
+endif else if (*loaded).ndata le 2 then begin
+  print,'ERROR in cw2csv: No pair is loaded, so nothing can be written to disk'
+  return
+endif
+
+; Get the spectrum to be written to disk
+
+if n_elements(n) gt 0 then begin
+  pair = (*stack[n-1]).spec
+  freq = (*stack[n-1]).freq
+  npol = n_elements((*stack[n-1]).tags)
+endif else begin
+  pair = (*loaded).spec
+  freq = (*loaded).freq
+  npol = n_elements((*loaded).tags)
+endelse
+writepols = intarr(npol)
+if n_elements(chan) eq 0 then writepols = writepols+1 else if n_elements(chan) eq 1 then begin
+  if chan lt 0 || chan gt npol then begin
+    print, "ERROR in cw2csv. chans must be 1 .. npol"
+    return
+  endif
+  writepols[chan-1] = 1
+endif else begin
+  for i = 1, n_elements(chan) do begin
+    if chan[i-1] lt 0 || chan[i-1] gt npol then begin
+      print, "ERROR in cw2csv. chans must be 1 .. npol"
+      return
+    endif
+    writepols[chan[i-1]-1] = 1
+  endfor
+endelse
+
+; Write the data and close up shop
+
+nwrite = total(writepols)
+a = transpose(freq)
+header=strarr(nwrite+1)
+header[0] = "Frequency"
+for i = 0, npol-1 do begin
+  if writepols[i] then begin
+    a = [a, pair[i,*]]
+    header[i+1] = chanstrings[i]
+  endif
+endfor
+print, size(a)
+write_csv, outfile, a, header=header
+
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pro cw2dat,outfile,sc=sc,stack=n,chan=chan,help=help,_extra=_ext
 
 ; Write one channel of spectral data to a dat (ASCII text) file:
