@@ -3758,7 +3758,7 @@ endelse
 nwrite = total(writepols)
 a = transpose(freq)
 header=strarr(nwrite+1)
-header[0] = "Frequency"
+header[0] = "#Frequency"
 for i = 0, npol-1 do begin
   if writepols[i] then begin
     a = [a, pair[i,*]]
