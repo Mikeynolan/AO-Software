@@ -1310,7 +1310,7 @@ if n_params() ne 0 or keyword_set(help) then begin
   return
 endif
 
-chanstrings = ['OC','SC','RE','IM','S1','S2','S3','S4','MU','DL','RD','BL','GN']
+chanstrings = ['OC','SC','RE','IM','S1','S2','S3','S4','MU','DP','DL','CH','RD','GN','BL']
 maxchan = n_elements(chanstrings)
 
 end
@@ -1638,7 +1638,14 @@ extractsome = arg_present(f) or arg_present(s) or arg_present(nd) or arg_present
 if keyword_set(help) or n_params() ne 0 or (not extractsome) $
                      or (arg_present(pol) and n_elements(chan) eq 0) then begin
   print,'extract,freq=freq,spec=spec,ndata=ndata,tags=tags,ntags=ntags,extratags=extratags, $'
-  print,'        nextra=nextra,tname=tname[[,pol=pol],chan=1 .. n][,/help]'
+  print,'        nextra=nextra,tname=tname,pol=pol,chan=1 .. n][,/help]'
+  print,'        freq: frequency axis'
+  print,'        spec: spectral data'
+  print,'        ndata: number of spectral channels'
+  print,'        tags: tags structure (array with structure for each channel)'
+  print,'        tname: tag names (array of strings)'
+  print,'        extratags: extra tags'
+  print,'        pol:  Channel names'
   return
 endif
 
@@ -1647,29 +1654,42 @@ if (*loaded).ndata le 2 then begin
   return
 endif
 
+npol = n_elements((*loaded).tags)
+
 ; Check which channel(s) to load
 
-npol = n_elements((*loaded).tags)
 if n_elements(chan) eq 0 then begin
-  extractboth = 1
-endif else if (chan ge 1 and chan le npol) then begin
-  extractboth = 0
+  which = indgen(npol)
+  extractboth=1
+endif else if n_elements(chan) eq 1 then begin
+  if (chan ge 1 and chan le npol) then begin
+    which = [chan-1]
+    extractboth=0
+  endif else begin
+    print,'Must use chan = 1 (OC) or 2 (SC) up to npol, an array of same, or omit (all)'
+    return
+  endelse
 endif else begin
-  print,'Must use chan = 1 (OC) or 2 (SC) up to npol or omit (all)'
-  return
+  which = chan-1
+  extractboth=1
+  if max(which) ge npol || min(which) lt 0 then begin
+    print,'All chan Must be = 1 (OC) or 2 (SC) up to npol, an array of same, or omit (all)'
+    return
+  endif
 endelse
+
 
 ; Send the requested pair elements to the outside world
 
 if arg_present(f) then f = (*loaded).freq
-if arg_present(s) then s = (extractboth) ? (*loaded).spec : reform((*loaded).spec[chan-1,*])
+if arg_present(s) then s = (extractboth) ? (*loaded).spec[which,*] : reform((*loaded).spec[chan-1,*])
 if arg_present(nd) then nd = (*loaded).ndata
-if arg_present(t) then t = (extractboth) ? (*loaded).tags : (*loaded).tags[chan-1]
+if arg_present(t) then t = (extractboth) ? (*loaded).tags[which] : (*loaded).tags[chan-1]
 if arg_present(nt) then nt = (*loaded).ntags
 if arg_present(tn) then tn = (*loaded).tname
 if arg_present(ex) then ex = (*loaded).extratags
 if arg_present(nex) then nex = (*loaded).nextra
-if arg_present(p) then p = extractboth ? chanstrings : chanstrings[chan-1]
+if arg_present(p) then p = extractboth ? chanstrings : chanstrings[which]
 
 end
 

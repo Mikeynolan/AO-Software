@@ -501,10 +501,11 @@ nplots = (keyword_set(separate)) ? total(plotpol) : 1L
 if ~ ocsconly then rcs = 1
 
 if keyword_set(rcs) then begin
-  specrcs = specs * (sdev # replicate(1,ndata)) * df
+  maxn = (npol < 8)-1 ; after S4, values are not cross-sections, so not per-Hz.
+  specrcs = specs[0:maxn,*] * (sdev[0:maxn] # replicate(1,ndata)) * df
   oc = oc * oc_sdev / df
   sc = sc * sc_sdev / df
-  specs = specrcs
+  specs[0:maxn,*] = specrcs
 endif
 
 ; Smooth the spectra if desired
@@ -641,6 +642,7 @@ polstrings = ""
 for i = 0, npol-1 do begin
   if plotpol[i] then begin
     polstrings = polstrings + (firstplot ? '' : ', ') + chanstrings[i]
+    if (firstplot && i gt 7) then ytitlestring = '' ; later params don't have units.:w
     firstplot = 0
   endif
 endfor

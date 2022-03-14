@@ -540,7 +540,7 @@ zdata = {rec:zdummy.rec, sec:zdummy.sec, color:zdummy.color, $
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro dehop,flipchan=flipchan,npol=npol,help=help,_extra=_ext
+pro dehop,flipchan=flipchan,nostokes=nostokes,help=help,_extra=_ext
 
 ; Dehop an OC/SC spectral pair
 ;
@@ -555,7 +555,7 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,' '
   print,'dehop[,/noweight][,/merge OR ,/blocks][,maxf=maxf]    $'
   print,'     [,/nobgfit][,/bias_allow][,degreemax=degreemax]  $'
-  print,'     [,/roundephcorr][,flipchan=flipchan][,npol=npol][,/plotfit][,/help]'
+  print,'     [,/roundephcorr][,flipchan=flipchan],[nostokes=nostokes][,/plotfit][,/help]'
   print,' '
   print,'      /merge produces one output spectrum for the entire file, ', $
         'rather than one per scan',format='(2a)'
@@ -573,27 +573,19 @@ if n_params() ne 0 or keyword_set(help) then begin
   print,'            are shifted by an integer number of bins; otherwise no rounding'
   print,'            is carried out and interpolation (cubic convolution) is performed'
   print,'            rather than simple shifting.'
-  print,'
+  print,''
   print,'            (Note that interpolation can artificially reduce the noise variance.)'
-  print,'
+  print,''
   print,'      flipchan is used to correct a cabling error (switching I and Q):'
   print,'            flipping is done about the middle of the spectrum, and neither'
   print,'            xjcen, posfr, nor the frequency vector are changed.  Flipping is'
   print,'            done before any shifting is carried out due to /roundephcorr.'
   print,'            Permitted values are flipchan = 1, 2, or 3 (flip both channels).'
-  print,'      npol sets the number of channels it reads. npol=2 (default) is normal'
-  print,'            OC/SC processing. npol=4 adds the RE and Im Stokes data. Note:'
-  print,'            flipchan must be 0 or 3 if npol=4: you can''t flop the crosses'
+  print,"      /nostokes means don't process Stokes even if 4 files present. Note:"
+  print,'            flipchan must be 0 or 3 to process Stokes: you can''t flop the crosses'
   print,'      /plotfit plots the polynomial fit to the background spectrum ', $
         'for each hop of each block',format='(2a)'
   print,' '
-  return
-endif
-
-; Default to standard processing, mainly because file checking is done at a lower level.
-if not keyword_set(npol) then npol=2
-if npol lt 2 or npol gt 4 then begin
-  print, 'ERROR: Dehop: npol mist be 2, 3, or 4'
   return
 endif
 
@@ -608,10 +600,6 @@ if not keyword_set(flipchan) then begin
   iqerror_OC = 0
   iqerror_SC = 0
 endif else begin
-  if npol gt 2 and flipchan ne 3 then begin
-    print, "ERROR in dehop: Don't know how to do Stokes with differently-flipped spectra"
-    return
-  endif
   iqerror_OC = (flipchan eq 1 or flipchan eq 3) ? 1 : 0
   iqerror_SC = (flipchan eq 2 or flipchan eq 3) ? 1 : 0
 endelse
@@ -643,24 +631,29 @@ infile = filestem + '.p2' + filesuffix
 dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
 n_SC = nstack1 - (nstack1_start + n_OC)
 
-if npol gt 2 then begin
+if ~keyword_set(nostokes) then begin
+; Look for and then Dehop the RE data
 
-; Dehop the RE data
+; iqerror_OC and SC are the same, can send in either.
+  infile = filestem + '.p3' + filesuffix
+  if file_test(infile, /read) then begin
+    if flipchan ne 3 && flipchan ne 0 then begin
+      print, "flipchan different for pols, skipping Stokes processing"
+    endif else begin
+      dehop1,3,iqerror=iqerror_SC,/silent,_extra=_ext
+      n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
+      npol = 3
 
-infile = filestem + '.p3' + filesuffix
-dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
-n_RE = nstack1 - (nstack1_start + n_SC + n_OC)
+; Look for and Dehop the IM data
 
-endif
-
-if npol gt 3 then begin
-
-; Dehop the IM data
-
-infile = filestem + '.p4' + filesuffix
-dehop1,2,iqerror=iqerror_SC,/silent,_extra=_ext
-n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
-
+      infile = filestem + '.p4' + filesuffix
+      if file_test(infile, /read) then begin
+        dehop1,4,iqerror=iqerror_SC,/silent,_extra=_ext
+        n_IM = nstack1 - (nstack1_start + n_RE + n_SC + n_OC)
+        npol = 4
+      endif
+    endelse
+  endif
 endif
 
 ; Decide what to do with the two channels, then do it

@@ -6121,13 +6121,11 @@ pro addextra,extraformat,extraname,extravalue,chanflags, $
 
 common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
+common channelBlock, chanstrings, maxchan
 
 if n_elements(extraformat) eq 0 then extraformat = ''  ; just so it's defined
 if n_elements(extraname) eq 0 then extraname = ''
 if n_elements(extracomment) eq 0 then extracomment = ''
-if n_elements(chanflags) lt 2 then chanflags = intarr(4)
-if n_params() eq 3 then chanflags = intarr(4)+1
-
 if keyword_set(help) or n_params() lt 3 or n_params() gt 4 $ 
              or size(extraformat, /type) ne 7 or size(extraname, /type) ne 7 $
              or size(extracomment, /type) ne 7 then begin
@@ -6151,25 +6149,48 @@ endif else if n_elements(n) gt 0 then begin
     print,'ERROR in addextra: There are only ',nstack,' pairs in the stack', $
           format='(a,i0,a)'
     return
-  endif
+  endif else npol = n_elements((*stack[n-1]).tags)
 endif else if (*loaded).ndata le 2 then begin
   print,'ERROR in addextra: No pair is loaded'
   return
-endif else if isnull(extraname) and notnull(extraformat) then begin
+endif else npol = n_elements((*loaded).tags)
+
+if isnull(extraname) and notnull(extraformat) then begin
   print,'ERROR in addextra: Must specify a tag name'
   return
 endif else if isnull(extraname) and isnull(extraformat) and $
               isnull(extravalue) and isnull(extracomment) then begin
   print,"ERROR in addextra: Can't specify a blank comment line"
   return
-endif else if total(chanflags) eq 0 then begin
+endif
+
+if total(chanflags) eq 0 then begin
   return  ; no extra tags to set!
 endif
 
+if n_params() lt 4 then chanflags = intarr(npol) + 1
+
+if n_elements(chanflags) lt 2 then begin
+  c = chanflags
+  chanflags = intarr(npol)
+  chanflags[c-1] = 1
+endif
+
+if total(chanflags) eq 0 then begin
+  print, 'WARNING in addextra: No channels to change'
+  return
+endif
+
+
 ; Construct a new structure containing the extra tag
 
-chanst1 = ['_OC','_SC','_RE','_IM']
-chanst2 = ['# OC: ','# SC: ','# RE: ','#IM: ']
+chanst1 = chanstrings
+chanst2 = chanstrings
+for i=0, maxchan-1 do begin
+  chanst1[i] = '_' + chanstrings[i]
+  chanst2[i] = '# ' + chanstrings[i] + ': '
+endfor
+  
 newcomment = strtrim(extracomment,2)
 if strmid(newcomment,0,1) eq '#' then newcomment = strtrim(strmid(newcomment,1), 2)
 newcomment = (isnull(newcomment)) ? '' : '# ' + newcomment
@@ -6193,26 +6214,22 @@ endelse
 
 if n_elements(n) eq 0 then oldStruc = *loaded else oldStruc = *stack[n-1]
 extratags = reform(oldStruc.extratags)
-npol = n_elements(oldStruct.spec[*,0])
+npol = n_elements(oldStruc.spec[*,0])
 nextra = oldStruc.nextra
 ;create the tags
 allchan = (total(chanflags) eq npol)
-for i = 1, (allchan) ? 1 : total(chanflags) do begin
-  if total(chanflags) eq npol then begin
+whichchan = where(chanflags)
+for i = 0, (allchan) ? 0 : total(chanflags)-1 do begin
+  cnewname = newname
+  cnewcomment = newcomment
+  if ~allchan then begin
     if notnull(newname) then begin
-      cnewname = newname
+      cnewname = newname + chanst1[whichchan[i]]
     endif else begin
-      if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
-          cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
+      if strpos(newcomment,chanst2[whichchan[i]]) ne 0 then $
+          cnewcomment = chanst2[whichchan[i]] + strmid(newcomment,2)
     endelse
-  endif else begin
-    if notnull(newname) then begin
-      cnewname = newname + chanst1[whichchan[i-1]]
-    endif else begin
-      if strpos(newcomment,chanst2[whichchan[i-1]]) ne 0 then $
-          cnewcomment = chanst2[whichchan[i-1]] + strmid(newcomment,2)
-    endelse
-  endelse
+  endif ; if allchan
   newextra = {format:newformat, name:cnewname, value:newvalue, comment:cnewcomment}
   extratags = [extratags, extratags[0]]
   for k=0L,3 do extratags[nextra].(k) = newextra.(k)
@@ -6221,7 +6238,7 @@ for i = 1, (allchan) ? 1 : total(chanflags) do begin
               extratags:extratags, ndata:oldStruc.ndata, ntags:oldStruc.ntags, $
               nextra:nextra, tname:oldStruc.tname}
   if n_elements(n) eq 0 then *loaded = newStruc else *stack[n-1] = newStruc
-  oldStruct = newStruct
+  oldStruc = newStruc
 endfor
 
 end
@@ -16050,11 +16067,13 @@ common loadedBlock,loadedi,loaded1,loaded
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
 common channelBlock, chanstrings, maxchan
 
+nstokes = 11 ; How many we are adding.
+
 if n_params() ne 0 or keyword_set(help) then begin
   print,' '
   print,'stokes[,txpol=txpol][,/stack][,/help]'
   print,' '
-  print, 'Add Stokes (S1 .. S4) polarizations to the loaded spectrum.'
+  print, 'Add Stokes (S1 .. S4, dp, dlp) polarizations to the loaded spectrum.'
   print,'push it onto the single-channel stack.  These channels will update the'
   print,'sdev tag but will keep the OC values for all other tags and extra tags.'
   print,' '
@@ -16127,23 +16146,59 @@ for n=1L,nuse do begin
   ; Compute the total-power sdev and spectrum
 
   rcsspec = pair[0:3,*] * (sdev[0:3] # replicate(1, nspec))
-  s = rcsspec
-  stags = tags[0:3]
+  s = fltarr(nstokes,nspec)
+  stags = replicate(tags[0], nstokes) ; same as OC except as changed
   stags.sdev = 1.0
 
+; s1 = I
   s[0,*] = rcsspec[0,*] + rcsspec[1,*]
   stags[0].jcp = 5
 
+; s2 = Q
   s[1,*] = 2 * rcsspec[2,*]
   stags[1].jcp = 6
 
+; S3 = U
   s[2,*] = -2 * rcsspec[3,*]
   stags[2].jcp = 7
   
+; S4 = V
   s[3,*] = (rcsspec[0,*] - rcsspec[1,*]) * txp
   stags[3].jcp = 8
 
- ; Create a new structure that may (probably is) be a different size from the old one.
+; mu = SC/OC Note: NaN is a legitimate result
+  s[4,*] = rcsspec[1,*] / rcsspec[0,*]
+  stags[4].jcp = 9
+
+; m = degree of polarization  DP
+  rmsp = sqrt(s[1,*]^2+s[2,*]^2+s[3,*]^2)
+  s[5,*] = rmsp / s[0,*]
+  stags[5].jcp = 10
+
+; m_l = degree of linear polarization DL
+  s[6,*] = sqrt(s[1,*]^2+s[2,*]^2) / s[0,*]
+  stags[6].jcp = 11
+
+; chi = 1/2 asin (s4 / m s1) CH
+  s[7,*] = 0.5 * asin(s[3,*] / rmsp)
+  stags[7].jcp = 12
+
+; red = (m s1 ( 1 + sin 2chi)/2) ^{1/2} RD
+;     = (rms/2 (1 + S4 / rms)) ^{1/s}
+  s[8,*] = sqrt(rmsp * (1 + s[3,*]/rmsp) * 0.5)
+  stags[8].jcp = 13
+
+; green = (s1 (1 -m) ) ^{1/2} GN
+  s[9,*] = sqrt(s[0,*] - rmsp)
+  stags[9].jcp = 14
+
+; blue = (m s1 (1 - 2 chi) /2) ^{1/2} BL
+;      = (rms/2 (1 - S4 / rms)) ^{1/s}
+
+  s[10,*] = sqrt(rmsp * (1 - s[3,*]/rmsp) * 0.5)
+  stags[10].jcp = 15
+
+; Create a new structure that may (probably is) be a different size from the old one.
 
   newStruct = {freq:(*loaded).freq, spec:[(*loaded).spec[0:3,*], s], $
             tags:[(*loaded).tags[0:3],stags], extratags:(*loaded).extratags, $
