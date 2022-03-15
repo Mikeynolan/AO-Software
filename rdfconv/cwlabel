@@ -34,7 +34,7 @@ foreach $file (@ARGV) {
  open(my $fh, "< $file") || die;
  my $author = '';
  my $editor = '';
- my ($cdate,$start,$stopt,$pname,$tname,$bookmark);
+ my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
  my ($ncols,$version,$ttype,$rdffile,$xmlname);
  my $writepdsversion;
  my $btags = 0;
@@ -52,11 +52,14 @@ foreach $file (@ARGV) {
 # This script is CW. 
  my $moreRadar = '          <radar:observation_purpose>Doppler</radar:observation_purpose>
 ';
- my $txprops = '            <radar:Modulation>
-              <radar:power_modulation>CW</radar:power_modulation>
-              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
-            </radar:Modulation>
-';
+ my $txprops = '';
+# Modulation under discussion in radar dictionary as of 02/2022. Not neccessary
+# for CW, so skipping
+# my $txprops = '            <radar:Modulation>
+#              <radar:power_modulation>CW</radar:power_modulation>
+#              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
+#            </radar:Modulation>
+#';
  my $targetprops ='';
  my $rtt;
  my $txpwr;
@@ -112,7 +115,6 @@ foreach $file (@ARGV) {
     }
      if ($cells[0] =~ /Product Name/) {
       $pname = $cells[1];
-      $replace{'XXXPTITLE'} = $pname;
     } elsif ($cells[0] =~ /Product Version/) {
       $version = $cells[1];
       $replace{'XXXVERSION'} = $version;
@@ -166,8 +168,10 @@ foreach $file (@ARGV) {
  $replace{'XXXNEXTRA'} = $nextra;
  $replace{'XXXNDATA'} = $ndata;
  $replace{'XXXCSVFILE'} = $file;
+ $replace{'XXXPTITLE'} = "$pname $start";
  $lcfile = lc $file;
- ($replace{'XXXIDENT'} = $lcfile) =~ s/\./_/g;
+ $lcstart = lc $start;
+ ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
  $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
  $replace{'XXXTXPROPS'} = $txprops;
  $replace{'XXXTARGETPROPS'} = $targetprops;
