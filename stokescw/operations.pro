@@ -16207,8 +16207,7 @@ for n=1L,nuse do begin
 
   *loaded = newStruct
   if keyword_set(st) then begin
-    ptr_free,st[n-1]
-    *st[n-1] = *loaded
+    *stack[n-1] = *loaded
   endif
 
 endfor
