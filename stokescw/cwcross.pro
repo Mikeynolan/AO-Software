@@ -158,6 +158,23 @@ mnoises = sqrt(msumsq / self^2 / looks) / msum
 mnoise = sqrt(msumsq / self^2 /looks + (r-l+1.d0)) / msum
 end
 
+; Derived values need to be done by totalling S1..S4
+
+if npol gt 2 then begin
+  S1 = sums[0] * sdev[0] + sums[1] * sdev[1]
+  S2 = 2 * sums[2] * sdev[2]
+  S3 = -2 * sums[3] * sdev[3]
+  S4 = sums[0]* sdev[0] - sums[1]*sdev[1]
+  mu = sums[1] / sums[0] * sdev[1]/ sdev[0]
+  rms2 = sqrt(S2^2 + S3^2)
+  rms3 = sqrt(S2^2 + S3^2 + S4^2)
+  DP = rms3 / S1
+  DLP = rms2 / S1
+  chi = 0.5 * asin(S4 / rms3)
+  red = sqrt(0.5 * (rms3 + S4))
+  green = sqrt(S1 - rms3)
+  blue = sqrt(0.5 * (rms3 - S4))
+endif
 ; Loop to print to file and screen
 for i = 1, loops do begin
   if (i eq 1) then luni = -1 else luni = lun
@@ -173,9 +190,23 @@ for i = 1, loops do begin
   
   printf, luni, "          SNR           xsec      thermal       self        total       total"
   printf, luni, "         sigmas         km^2      (frac)       (frac)      (frac)      (km^2)"
-  for j = 0, npol-1 do begin
+  for j = 0, (npol < 4)-1 do begin
       printf, luni, format='(a2,":    ",g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4)', chanstrings[j], sums[j], xsec[j], noiseg[j], noises[j], noise[j], noise[j]*xsec[j]
   endfor
+  if npol gt 2 then begin
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "S1", S1
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "S2", S2
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "S3", S3
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "S4", S4
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "MU", mu
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "DP", DP
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "DL", DLP
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "CH", chi
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "RD", red
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "GN", green
+     printf, luni, format='(a2,":    ",10x,2x,g10.4)', "BL", blue
+  endif
+
   if ((not keyword_set(siglim)) and not keyword_set(diff)) then begin
   printf, luni, format='("mouse",A2,g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4, 2x, g10.4)', (pol eq 1) ? "SC" : "OC", msum, msum*sdev[pol], mnoiseg, mnoises, mnoise, mnoise*msum*sdev[pol]
   endif
