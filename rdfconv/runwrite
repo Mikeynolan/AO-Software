@@ -49,6 +49,11 @@ die "No datafile found in logfiles\n" unless defined($df);
 
 $rdffile = "$obj.$pdate.$res.rdf";
 $pdsfile = "$obj.$pdate.$res";
+@prettyfile = glob ("$obj.$pdate.*.cw.ps");
+$prettyfile = $prettyfile[0];
+if (0 != $#prettyfile) {
+  print "More than one prettyfile, choosing $prettyfile\n"
+}
 
 open ($scrf, ">", "pdsscript.pro") || die;
 
@@ -71,4 +76,10 @@ close $scrf;
 
 `idl86 < pdsscript.pro`;
 `cwlabel *.csv`;
+if (-e $prettyfile) {
+  `pdf2pdfa $prettyfile`;
+  `rename .ps.pdfa. . $prettyfile.pdfa.pdf`;
+} else {
+  print "No cwsumpretty";
+}
 

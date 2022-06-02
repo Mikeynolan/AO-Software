@@ -1,0 +1,5 @@
+#!/bin/tcsh
+
+foreach f ($*)
+  (cd $f ; runwrite log_output)
+end
