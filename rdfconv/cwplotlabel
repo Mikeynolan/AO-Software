@@ -1,0 +1,140 @@
+#!/usr/bin/perl -w
+#use Text::CSV;
+use Getopt::Std qw(getopts);
+use strict;
+use warnings;
+use POSIX;
+
+# For the cheezy csv parser
+my $sep = ',';
+my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+
+my $file;
+our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h);
+our $tfh;
+our ($title, $descr, $date, $year, $docname, $editor);
+
+getopts('t:e:d:D:I:h');
+
+if ($opt_h) {
+ print STDERR <<EOT;
+Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." [-I date] [-t template] [-D "Docname"] [-h] file.pdf
+    -T:  Set title (required)
+    -d:  Set Description (required)
+    -e:  Set editor *required* 
+    -I:  date - default: use today
+    -D:  Docname - default: generate from file name by capitalizng and removing extension
+    -t:  Use template as a template for the xml. Default is internal template
+    -h:  Print this message.
+EOT
+ exit;
+}
+
+if ($opt_e) {
+ $editor = $opt_e;
+} else {
+ die "Editor option is requireds";
+}
+if ($opt_T) {
+  $title=$opt_T;
+} else {
+  die "title option is required";
+}
+if ($opt_d) {
+  $descr = $opt_d;
+} else {
+  die "Description option is required";
+}
+if ($opt_I) {
+  $date = $opt_I;
+  $date =~ /(\d\d\d\d)-\d\d-\d\d/ || die "Date must be YYYY-MM-DD";
+  $year = $1;
+} else {
+  $date = strftime "%F", localtime;
+  $year = strftime "%Y", localtime;
+}
+if ($opt_D) {
+  $docname = $opt_D;
+} else {
+  $docname = $file;
+  $docname =~ s/.pdf$//;
+  $docname =~ s/([\w']+)/\u\L$1/;
+}
+if ($opt_t) {
+ open($tfh, "<", $opt_t) || die;
+} else {
+ open($tfh, "<", gettemplate()) || die;
+}
+
+foreach $file (@ARGV) {
+ my %replace;
+ my $author = '';
+ my $editor = '';
+ my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
+ my ($ncols,$version,$ttype,$rdffile,$xmlname);
+ my $tell = 0;
+ $replace{'XXXPTITLE'} = $title;
+ $replace{'XXXFILENAME'} = $file;
+ $replace{'XXEDITOR'} = $editor;
+ $replace{'XXXDESCRIPTION'} = $descr;
+ $replace{'XXXDATE'} = $date;
+ $replace{'XXXYEAR'} = $year;
+ $replace{'XXXDOCNAME'} = $docname;
+
+# And do the replace on the template.
+ my $regex = join "|", map { quotemeta } keys %replace;
+ $regex = qr/$regex/;
+
+ seek($tfh, 0, 0) || die; #rewind template
+
+ ($xmlname = $file) =~ s/\.pdf$/.xml/;
+ open (my $xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $xfh;
+
+} # While @ARGV
+
+
+sub gettemplate {
+#
+# THere are issues both with having this here and with a separate file.
+#
+our $template3 = <<EOT;
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1F00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Document xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1F00.xsd">
+  <Identification_Area>
+    <logical_identifier>urn:nasa:pds:no_bundle:document:organization.pdf.pdfa</logical_identifier>
+    <version_id>1.0</version_id>
+    <title>XXXPTITLE</title>
+    <information_model_version>1.15.0.0</information_model_version>
+    <product_class>Product_Document</product_class>
+    <Citation_Information>
+      <editor_list>XXXEDITOR</editor_list>
+      <publication_year>XXXYEAR</publication_year>
+      <description>XXXDESCRIPTION</description>
+    </Citation_Information>
+  </Identification_Area>
+  <Document>
+    <document_name>XXXDOCNAME</document_name>
+    <editor_list>XXXEDITOR</editor_list>
+    <publication_date>XXXDATE</publication_date>
+    <Document_Edition>
+      <edition_name>ADOBE PDF</edition_name>
+      <language>English</language>
+      <files>1</files>
+      <Document_File>
+        <file_name>XXXFILENAME</file_name>
+        <document_standard_id>PDF/A</document_standard_id>
+      </Document_File>
+    </Document_Edition>
+  </Document>
+</Product_Document>
+EOT
+
+return \$template3;
+}
+
