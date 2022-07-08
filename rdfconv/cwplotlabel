@@ -14,7 +14,7 @@ our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h);
 our $tfh;
 our ($title, $descr, $date, $year, $docname, $editor);
 
-getopts('t:e:d:D:I:h');
+getopts('T:t:e:d:D:I:h');
 
 if ($opt_h) {
  print STDERR <<EOT;
@@ -53,13 +53,6 @@ if ($opt_I) {
   $date = strftime "%F", localtime;
   $year = strftime "%Y", localtime;
 }
-if ($opt_D) {
-  $docname = $opt_D;
-} else {
-  $docname = $file;
-  $docname =~ s/.pdf$//;
-  $docname =~ s/([\w']+)/\u\L$1/;
-}
 if ($opt_t) {
  open($tfh, "<", $opt_t) || die;
 } else {
@@ -67,15 +60,19 @@ if ($opt_t) {
 }
 
 foreach $file (@ARGV) {
- my %replace;
- my $author = '';
- my $editor = '';
- my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
- my ($ncols,$version,$ttype,$rdffile,$xmlname);
- my $tell = 0;
+  my %replace;
+  my $xmlname;
+	#my $editor = '';
+if ($opt_D) {
+  $docname = $opt_D;
+} else {
+  $docname = $file;
+  $docname =~ s/.pdf$//;
+  $docname =~ s/([\w']+)/\u\L$1/;
+}
  $replace{'XXXPTITLE'} = $title;
  $replace{'XXXFILENAME'} = $file;
- $replace{'XXEDITOR'} = $editor;
+ $replace{'XXXEDITOR'} = $editor;
  $replace{'XXXDESCRIPTION'} = $descr;
  $replace{'XXXDATE'} = $date;
  $replace{'XXXYEAR'} = $year;
@@ -113,7 +110,7 @@ our $template3 = <<EOT;
     <information_model_version>1.15.0.0</information_model_version>
     <product_class>Product_Document</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITOR</editor_list>
+      <editor_list>XXXEDITOR, Ed.</editor_list>
       <publication_year>XXXYEAR</publication_year>
       <description>XXXDESCRIPTION</description>
     </Citation_Information>
