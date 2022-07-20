@@ -1,0 +1,24 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+our($objs,$urns);
+our $nextistarget;
+
+open ($urns, ">> collection.csv") || die "couldn't open collection.csv for writing";
+open ($objs, ">> targets.csv") || die "couldn't open targets.csv for writing";
+
+while (<>) {
+  if (/(urn:[^<]+)/) {
+    print $urns "P,$1::1.0\r\n";
+  }
+  if ($nextistarget) {
+    if (/name>([^<]+)/) {
+      print $objs "$1\n";
+      $nextistarget = 0;
+    }
+  }
+  if (/<Target_Identification>/) {
+    $nextistarget = 1;
+  }
+}
