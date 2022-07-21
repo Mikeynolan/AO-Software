@@ -1,0 +1,3 @@
+find . -name \*xml -print | xargs collectbundle
+sort < collection.csv | uniq > collections.csv
+sort < targets | uniq > targetss
