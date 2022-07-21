@@ -765,11 +765,13 @@ for i=0, n_elements(dates)-1 do begin  ; loop through dates in case of date roll
           for ii = 1, nstack do begin
             jds = getextra('jdstart', stack=ii)
             if (mjd - jds lt 1.d-5) then begin
-              perror = sqrt(interpRot[j]*interpRot[j]+interphght[j]+interphght[j])
-              setextra, 'f', 'perror', perror, comment='pointing error due to tiedown settings [arcsec]', stack=ii
-              setextra, 'f', 'focusoff', interpavgh[j], comment='Focus error [m]', stack=ii
+              perror = sqrt(interpRot[j]*interpRot[j]+interphght[j]*interphght[j])
+              if interpRot[j] lt -990 then perror = 0
+              setextra, 'f', 'perror', perror, comment='pointing error due to tiedown settings [arcsec]. 0 if no valid data', stack=ii
+              setextra, 'f', 'focusoff', (interpavgh[j] lt -990)?0:interpavgh[j], comment='Focus error [m]', stack=ii
               calflg = perror gt perr or abs(interpavgh[j]) gt herr
-              comstr = strcompress("true if pointing error exceeds " + string(perr) + " or focus error is more than " + string(herr) + " m")
+              if interpavgh[j] lt -990 then calflg = -1
+              comstr = strcompress('1 if pointing error exceeds ' + string(perr) + " or focus error is more than " + string(herr) + ' m, -1 if no valid data')
               setextra, 'f', 'badcal', long(calflg), comment=comstr, stack=ii
             endif
           endfor

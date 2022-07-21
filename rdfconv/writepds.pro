@@ -44,7 +44,7 @@ common pdsBlock,pds
 if keyword_set(help) then begin
 print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
-print, "       /reset changes all to the default
+print, "       /reset changes all to the default"
 print, "       sets one or more required values for PDS. Names can be:"
 print, "       infile: OVERRIDE original rdf file in tags"
 print, "       target: OVERRIDE target listed in tags."
@@ -56,7 +56,7 @@ print, "       level: Product Processing Level, default is 'Calibrated'"
 print, "       facet: Science Search Facet, default='Tabulated,Physical Properties'"
 print, "       version: Product version. Default is '1.0'"
 print, "       waves: Wavelength range, default = 'Microwave'"
-print, "       bookmark: override default bookmark string. Depending on xmit_sta
+print, "       bookmark: override default bookmark string. Depending on xmit_sta"
 print, "                 tag, defaults to"
 print, "                 'AO TX;AO RX;AO RI' or"
 print, "                 'DSS14 TX;DSS14 RX'"
@@ -277,9 +277,9 @@ nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I
 printf, lun, 'Creation Date,', nowstring, addcomma
 
 ;
-; Now tags
+; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
-printf, lun, '# Tags,',addcomma
+printf, lun, 'Tags,RDF Tags begin here',addcomma
 ; Should allow override
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs']
 tagnames = strlowcase(tag_names(tags[0]))
@@ -302,7 +302,7 @@ endfor
 ;
 ; and extra tags
 ;
-printf, lun, '# Extra Tags,',addcomma
+printf, lun, 'ExtraTags,RDF Extra Tags begin here',addcomma
 printf, lun, 'file_date,', nowstring, ',s', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
