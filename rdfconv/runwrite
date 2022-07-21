@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 
 use Getopt::Std;
+use Cwd;
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n);
@@ -78,7 +79,10 @@ close $scrf;
 `cwlabel *.csv`;
 if (-e $prettyfile) {
   `pdf2pdfa $prettyfile`;
-  `rename .ps.pdfa. . $prettyfile.pdfa.pdf`;
+  $newprettyfile = $prettyfile;
+  $newprettyfile =~ s/.ps.pdfa.//;
+  rename $prettyfile  $newprettyfile || die "error in renaming";
+   `prettylabel $newprettyfile`;
 } else {
   print "No cwsumpretty";
 }

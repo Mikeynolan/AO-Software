@@ -1,0 +1,18 @@
+#!/usr/bin/perl -w
+
+use Cwd;
+use File::Spec;
+     
+   $name = $ARGV[0];
+   $here = cwd();
+   my @here = File::Spec->splitdir($here);
+   while (!($here[0] =~ "documentation")) {
+	   shift @here;
+   }
+   $lid = join "_", @here;
+   $lid .= "_$name";
+   $lid = lc $lid;
+   $here = File::Spec->catdir(@here);
+   $title= "Pretty CW plot for $here";
+   $desc="Smoothed and summed spectrum for $here. This plot can be created by summing all of the spectra in this directory and smoothing as stated in the plot.";
+   `cwplotlabel -e "Nolan, M.C." -T "$title" -d "$desc" -l "$lid" $name`;

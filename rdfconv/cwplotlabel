@@ -10,18 +10,19 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h);
+our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_l);
 our $tfh;
-our ($title, $descr, $date, $year, $docname, $editor);
+our ($title, $descr, $date, $year, $docname, $editor, $lid);
 
-getopts('t:e:d:D:I:h');
+getopts('T:t:e:d:D:I:hl:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." [-I date] [-t template] [-D "Docname"] [-h] file.pdf
+Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -l lid [-I date] [-t template] [-D "Docname"] [-h] file.pdf
     -T:  Set title (required)
     -d:  Set Description (required)
     -e:  Set editor *required* 
+    -l:  Set lid. *required*
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
@@ -53,12 +54,10 @@ if ($opt_I) {
   $date = strftime "%F", localtime;
   $year = strftime "%Y", localtime;
 }
-if ($opt_D) {
-  $docname = $opt_D;
+if ($opt_l) {
+	$lid = $opt_l;
 } else {
-  $docname = $file;
-  $docname =~ s/.pdf$//;
-  $docname =~ s/([\w']+)/\u\L$1/;
+	die "lid is required";
 }
 if ($opt_t) {
  open($tfh, "<", $opt_t) || die;
@@ -67,19 +66,24 @@ if ($opt_t) {
 }
 
 foreach $file (@ARGV) {
- my %replace;
- my $author = '';
- my $editor = '';
- my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
- my ($ncols,$version,$ttype,$rdffile,$xmlname);
- my $tell = 0;
+  my %replace;
+  my $xmlname;
+	#my $editor = '';
+if ($opt_D) {
+  $docname = $opt_D;
+} else {
+  $docname = $file;
+  $docname =~ s/.pdf$//;
+  $docname =~ s/([\w']+)/\u\L$1/;
+}
  $replace{'XXXPTITLE'} = $title;
  $replace{'XXXFILENAME'} = $file;
- $replace{'XXEDITOR'} = $editor;
+ $replace{'XXXEDITOR'} = $editor;
  $replace{'XXXDESCRIPTION'} = $descr;
  $replace{'XXXDATE'} = $date;
  $replace{'XXXYEAR'} = $year;
  $replace{'XXXDOCNAME'} = $docname;
+ $replace{'XXXLIDXXX'} = $lid;
 
 # And do the replace on the template.
  my $regex = join "|", map { quotemeta } keys %replace;
@@ -107,13 +111,13 @@ our $template3 = <<EOT;
 <?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1F00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Document xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1F00.xsd">
   <Identification_Area>
-    <logical_identifier>urn:nasa:pds:no_bundle:document:organization.pdf.pdfa</logical_identifier>
+    <logical_identifier>urn:nasa:pds:no_bundle:document:XXXLIDXXX</logical_identifier>
     <version_id>1.0</version_id>
     <title>XXXPTITLE</title>
     <information_model_version>1.15.0.0</information_model_version>
     <product_class>Product_Document</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITOR</editor_list>
+      <editor_list>XXXEDITOR, Ed.</editor_list>
       <publication_year>XXXYEAR</publication_year>
       <description>XXXDESCRIPTION</description>
     </Citation_Information>
