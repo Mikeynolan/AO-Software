@@ -6,7 +6,7 @@ our($objs,$urns);
 our $nextistarget;
 
 open ($urns, ">> collection.csv") || die "couldn't open collection.csv for writing";
-open ($objs, ">> targets.csv") || die "couldn't open targets.csv for writing";
+open ($objs, ">> targets") || die "couldn't open targets for writing";
 
 while (<>) {
   if (/(urn:[^<]+)/) {
