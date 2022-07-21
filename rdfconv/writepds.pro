@@ -310,7 +310,7 @@ for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
   if count gt 0 then continue
-  printf, lun, extratags[i].name, ',', qq(extratags[i].value), ',', extratags[i].format,addcr
+  printf, lun, format='(A,",",A,",",A,A)', extratags[i].name, qq(extratags[i].value), extratags[i].format,addcr
 endfor
 ;These were fixed up: keep in skiptags
 printf, lun, 'xmit_poln,', polstring, ',s', addcr
