@@ -2,7 +2,7 @@
 
 use strict;
 
-our($objs,$urns);
+our($objs,$urns,$dates);
 our $nextistarget;
 
 open ($urns, ">> collection.csv") || die "couldn't open collection.csv for writing";
@@ -22,7 +22,7 @@ while (<>) {
   if (/<Target_Identification>/) {
     $nextistarget = 1;
   }
-  if (/{start|stop}_date_time>(.+)<\/st/) {
-    print $dates "$1\n";
+  if (/(start|stop)_date_time>(.+)<\/st/) {
+    print $dates "$2\n";
   }
 }
