@@ -7,6 +7,7 @@ our $nextistarget;
 
 open ($urns, ">> collection.csv") || die "couldn't open collection.csv for writing";
 open ($objs, ">> targets") || die "couldn't open targets for writing";
+open ($dates, ">> dates") || die "couldn't open dates for writing";
 
 while (<>) {
   if (/(urn:[^<]+)/) {
@@ -20,5 +21,8 @@ while (<>) {
   }
   if (/<Target_Identification>/) {
     $nextistarget = 1;
+  }
+  if (/{start|stop}_date_time>(.+)<\/st/) {
+    print $dates "$1\n";
   }
 }
