@@ -213,7 +213,7 @@ my $aotx = 0;
 my $aorx = 0;
 my $dss14tx = 0;
 my $dss14rx = 0;
-my $sdd13tx = 0;
+my $dss13tx = 0;
 my $dss13rx = 0;
 my $gbtrx = 0;
 # which did we use for what
