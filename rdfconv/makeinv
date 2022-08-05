@@ -1,3 +1,4 @@
 find . -name \*xml -print | xargs collectbundle
-sort < collection.csv | uniq > collections.csv
-sort < targets | uniq > targetss
+sort -u < collection.csv | grep . > collections.csv
+sort -u < targets | grep . > targetss
+sort -u < dates | grep . > datess
