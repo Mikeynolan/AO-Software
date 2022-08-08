@@ -1,4 +1,6 @@
-find . -name \*xml -print | xargs collectbundle
-sort -u < collection.csv | grep . > collections.csv
+find data -name \*xml -print | xargs collectbundle
+sort -u < collection.csv | grep . > collection_data_inventory.csv
 sort -u < targets | grep . > targetss
 sort -u < dates | grep . > datess
+find documentation -name \*xml -print | xargs collectbundle
+sort -u < collection.csv | grep . > collection_documentation_inventory.csv
