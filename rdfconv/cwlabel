@@ -75,14 +75,14 @@ foreach $file (@ARGV) {
     }
     $replace{'XXXNCOLS'} = $ncols;
     next;
-   } elsif (/^# Tags/) {
+   } elsif (/^Tags/) {
     $btags = $tell;
     $replace{'XXXTOFFSET'} = $btags;
     $ontags = 1;
     $onextra = 0;
     $ondata = 0;
     next;
-   } elsif (/^# Extra/) {
+   } elsif (/^Extra/) {
     $bextra = $tell;
     $replace{'XXXEOFFSET'} = $bextra;
     $onextra = 1;

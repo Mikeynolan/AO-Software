@@ -6,7 +6,7 @@ use File::Spec;
    $name = $ARGV[0];
    $here = cwd();
    my @here = File::Spec->splitdir($here);
-   while (!($here[0] =~ "documentation")) {
+   while (!($here[0] =~ "document")) {
 	   shift @here;
    }
    $lid = join "_", @here;
