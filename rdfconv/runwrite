@@ -32,7 +32,7 @@ $logfile = $ARGV[0];
 open ($lfh, "<$logfile") or die;
 
 while (<$lfh>) {
-  if (/Data file is:\s+(datafile\S+)/) {
+  if (/Data file is:\s+(datafile\S*)/) {
     $df = $1;
   }
   if (/Ephemeris file is:\s+(\S+)/) {
