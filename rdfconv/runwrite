@@ -2,6 +2,7 @@
 
 use Getopt::Std;
 use Cwd;
+use File::Spec;
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n);
@@ -77,12 +78,32 @@ close $scrf;
 
 `idl86 < pdsscript.pro`;
 `cwlabel *.csv`;
+my $datanum = -1;
+my $docpath;
 if (-e $prettyfile) {
+  $here = cwd();
+   my @here = File::Spec->splitdir($here);
+   for (my $i = 0; $i <= $#here; $i++) {
+     if ($here[$i] eq "data")  {
+       $datanum = $i;
+       last;
+     }
+   }
+
   `pdf2pdfa $prettyfile`;
-  $newprettyfile = $prettyfile;
-  $newprettyfile =~ s/.ps.pdfa.//;
-  rename $prettyfile  $newprettyfile || die "error in renaming";
-   `prettylabel $newprettyfile`;
+  my $prettypdf = $prettyfile;
+  $prettypdf =~ s/.ps/.ps.pdfa.pdf/;
+  $newprettyfile = $prettypdf;
+  $newprettyfile =~ s/ps.pdfa.//;
+  rename $prettypdf, $newprettyfile || die "error in renaming";
+  if ($datanum >= 0) {
+    $here[$datanum] = "document";
+    $docpath = File::Spec->catdir(@here);
+    `mkdir -p $docpath; mv $newprettyfile $docpath/$newprettyfile`;
+    `cd $docpath ; prettylabel $newprettyfile`;
+  } else {
+    print "Not in data tree, can't install prettyfile";
+  }
 } else {
   print "No cwsumpretty";
 }

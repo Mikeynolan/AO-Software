@@ -324,12 +324,12 @@ if threecol then begin
   printf, lun, 'real,real,real',addcr
   printf, lun, 'Hz,,',addcr
   printf, lun, ',,',addcr
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline',addcr
+  printf, lun, format='(A,A)', 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline',addcr
 endif else begin
   printf, lun, 'frequency,pol1',addcr
   printf, lun, 'real,real',addcr
   printf, lun, 'Hz,',addcr
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline',addcr
+  printf, lun, format='(A,A)', 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline',addcr
 endelse
 
 ;

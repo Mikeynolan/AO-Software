@@ -6,7 +6,8 @@ use File::Spec;
    $name = $ARGV[0];
    $here = cwd();
    my @here = File::Spec->splitdir($here);
-   while (!($here[0] =~ "document")) {
+   while (!($here[0] =~ "document"))  {
+           if ($#here < 0) {die "couldn't find document directory in path to make sumpretty label: Need whole path";}
 	   shift @here;
    }
    $lid = join "_", @here;
