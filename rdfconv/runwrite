@@ -26,6 +26,7 @@ Usage: runwrite [-n] logfile
 EOF
 }
      
+print join(" ", $0, @ARGV);
 my $datafile ="";
 
 $logfile = $ARGV[0];
@@ -52,9 +53,13 @@ die "No datafile found in logfiles\n" unless defined($df);
 $rdffile = "$obj.$pdate.$res.rdf";
 $pdsfile = "$obj.$pdate.$res";
 @prettyfile = glob ("$obj.$pdate.*.cw.ps");
-$prettyfile = $prettyfile[0];
-if (0 != $#prettyfile) {
-  print "More than one prettyfile, choosing $prettyfile\n"
+if ($#prettyfile < 0) {
+  print "no Prettyfile matching $obj.$pdate.*.cw.ps\n"
+} else {
+  $prettyfile = $prettyfile[0];
+  if (0 != $#prettyfile) {
+    print "More than one prettyfile, choosing $prettyfile\n"
+  }
 }
 
 open ($scrf, ">", "pdsscript.pro") || die;
@@ -80,7 +85,7 @@ close $scrf;
 `cwlabel *.csv`;
 my $datanum = -1;
 my $docpath;
-if (-e $prettyfile) {
+if ($#prettyfile >= 0 && -e $prettyfile) {
   $here = cwd();
    my @here = File::Spec->splitdir($here);
    for (my $i = 0; $i <= $#here; $i++) {
