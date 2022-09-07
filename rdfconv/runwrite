@@ -26,7 +26,8 @@ Usage: runwrite [-n] logfile
 EOF
 }
      
-print join(" ", $0, @ARGV), "\n";
+$here = cwd();
+print join(" ", $here, $0, @ARGV), "\n";
 my $datafile ="";
 
 $logfile = $ARGV[0];
@@ -86,7 +87,6 @@ close $scrf;
 my $datanum = -1;
 my $docpath;
 if ($#prettyfile >= 0 && -e $prettyfile) {
-  $here = cwd();
    my @here = File::Spec->splitdir($here);
    for (my $i = 0; $i <= $#here; $i++) {
      if ($here[$i] eq "data")  {
