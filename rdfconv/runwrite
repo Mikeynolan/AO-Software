@@ -26,7 +26,7 @@ Usage: runwrite [-n] logfile
 EOF
 }
      
-print join(" ", $0, @ARGV);
+print join(" ", $0, @ARGV), "\n";
 my $datafile ="";
 
 $logfile = $ARGV[0];
@@ -101,15 +101,16 @@ if ($#prettyfile >= 0 && -e $prettyfile) {
   $newprettyfile = $prettypdf;
   $newprettyfile =~ s/ps.pdfa.//;
   rename $prettypdf, $newprettyfile || die "error in renaming";
+  print "Prettyfile $newprettyfile\n";
   if ($datanum >= 0) {
     $here[$datanum] = "document";
     $docpath = File::Spec->catdir(@here);
     `mkdir -p $docpath; mv $newprettyfile $docpath/$newprettyfile`;
     `cd $docpath ; prettylabel $newprettyfile`;
   } else {
-    print "Not in data tree, can't install prettyfile";
+    print "Not in data tree, can't install prettyfile\n";
   }
 } else {
-  print "No cwsumpretty";
+  print "No cwsumpretty\n";
 }
 
