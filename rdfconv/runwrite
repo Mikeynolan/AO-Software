@@ -27,7 +27,7 @@ EOF
 }
      
 $here = cwd();
-print join(" ", $here, $0, @ARGV), "\n";
+print "running runwrite in $here\n";
 my $datafile ="";
 
 $logfile = $ARGV[0];
