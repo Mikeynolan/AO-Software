@@ -1,5 +1,10 @@
 #!/bin/tcsh
-
+set echo
 foreach f ($*)
-  (cd $f ; runwrite log_output)
+  echo $f
+  set dirn=`dirname $f`
+  set logname=`basename $f`
+echo $dirn
+echo $logname
+  (cd $dirn ; runwrite $logname)
 end

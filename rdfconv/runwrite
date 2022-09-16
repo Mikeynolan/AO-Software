@@ -35,7 +35,7 @@ $logfile = $ARGV[0];
 open ($lfh, "<$logfile") or die;
 
 while (<$lfh>) {
-  if (/Data file is:\s+(datafile\S*)/) {
+  if (/Data file is:\s+(\S+)/) {
     $df = $1;
   }
   if (/Ephemeris file is:\s+(\S+)/) {
@@ -47,7 +47,7 @@ while (<$lfh>) {
   }
 }
 
-die "No datafile found in logfiles\n" unless defined($df);
+die "No datafile found in logfile $logfile in dir $here\n" unless defined($df);
 
 #Generate writefile
 
