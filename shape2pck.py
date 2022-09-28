@@ -39,7 +39,7 @@ def main():
 
     parser.add_argument("-e", "--epoch", action="store",
                         help="t0 to use when generating a shape spin block."
-                        "Default is 2000-01-00T12:00:00. "
+                        "Default is 2000-01-01T12:00:00. "
                         "Ignored when coverting to PCK.",
                         default="2000-01-01T12:00:00")
     parser.add_argument("-n", "--naifid", action="store",
