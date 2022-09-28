@@ -39,9 +39,9 @@ def main():
 
     parser.add_argument("-e", "--epoch", action="store",
                         help="t0 to use when generating a shape spin block."
-                        "Default is 2000-01-00T00:00:00. "
+                        "Default is 2000-01-01T12:00:00. "
                         "Ignored when coverting to PCK.",
-                        default="2000-01-01T00:00:00")
+                        default="2000-01-01T12:00:00")
     parser.add_argument("-n", "--naifid", action="store",
                         help="NAIFID to use in pck",
                         default="2XXXXXX")
@@ -70,7 +70,7 @@ def main():
         # PCK. Parse and send to spck2shape
         # Could have multiple \beginttext and \begindata
         # Could also get spicypy, but that seems like overkill to read
-        # three lines
+        # three lines. Commas and blank lines are optional and ignored.
         # \begindata
         #    BODY2101955_POLE_RA    = (  85.4567       0.              0. )
         #    BODY2101955_POLE_DEC   = ( -60.3574       0.              0. )
@@ -85,13 +85,13 @@ def main():
             vals = line.split()
             if indata and vals:
                 if vals[0].endswith("_POLE_RA"):
-                    RA0 = float(vals[3])
+                    RA0 = float(vals[3].replace(',',''))
                 elif vals[0].endswith("_POLE_DEC"):
-                    DEC0 = float(vals[3])
+                    DEC0 = float(vals[3].replace(',',''))
                 elif vals[0].endswith("_PM"):
-                    W0 = float(vals[3])
-                    W1 = float(vals[4])
-                    W2 = float(vals[5])
+                    W0 = float(vals[3].replace(',',''))
+                    W1 = float(vals[4].replace(',',''))
+                    W2 = float(vals[5].replace(',',''))
                 elif vals[0].startswith("\\begintext"):
                     indata = False
             elif vals and vals[0].startswith("\\begindata"):
