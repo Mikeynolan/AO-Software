@@ -10,14 +10,15 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h);
+our ($opt_t, $opt_h, $opt_L);
 our $tfh;
 
-getopts('t:h');
+getopts('t:L:h');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwlabel [-t template] [-h] file.csv [file.csv ...]
+Usage: cwlabel -L bundlelid [-t template] [-h] file.csv [file.csv ...]
+    -L:  LID for bundle, to be prepended onto ite  LIDs
     -t:  Use template as a template for the xml. Default is internal template
     -h:  Print this message.
 EOT
@@ -28,9 +29,15 @@ if ($opt_t) {
 } else {
  open($tfh, "<", gettemplate()) || die;
 }
-
+my $bundlelid;
+if($opt_L) {
+  $bundlelid = $opt_L;
+} else {
+  die "Must provide bundle lid";
+}
 foreach $file (@ARGV) {
  my %replace;
+ $replace{'XXXBUNDLELID'} = $bundlelid;
  open(my $fh, "< $file") || die;
  my $author = '';
  my $editor = '';
@@ -126,6 +133,9 @@ foreach $file (@ARGV) {
       $replace{'XXXSTOP'} = $stopt;
     } elsif ($cells[0] =~ /Target Name/) {
       $tname = $cells[1];
+      if ($tname =~ /(\d{4})([A-Z]{2}.*)/) {
+        $tname = "$1 $2";
+      }
       $replace{'XXXTARGET'} = $tname;
     } elsif ($cells[0] =~ /Target Type/) {
       $ttype = $cells[1];
@@ -399,23 +409,24 @@ sub gettemplate {
 #
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1I00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1I00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
  xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
- xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1I00.xsd
-                     http://pds.nasa.gov/pds4/radar/v1 http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1I00_1000.xsd">
+ xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.xsd
+                     http://pds.nasa.gov/pds4/radar/v1 http://www.naic.edu/~nolan/pds4/radar/v1/PDS4_RADAR_1J00_1000.xsd">
   <Identification_Area>
-    <logical_identifier>urn:nasa:pds:preview:data:XXXIDENT</logical_identifier>
+    <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
     <title>XXXPTITLE</title>
-    <information_model_version>1.10.0.0</information_model_version>
+    <information_model_version>1.19.0.0</information_model_version>
     <product_class>Product_Observational</product_class>
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
+      <doi>10.26033/TBD</doi>
       <description>Radar Doppler spectrum converted from RDF format</description>
     </Citation_Information>
   </Identification_Area>
