@@ -269,6 +269,11 @@ printf, lun, 'Observing System Bookmark,', qq(bookmark),",", addcomma
 inf = getextral(extratags,'infile')
 if notnull(pds.infile) then inf = pds.infile
 if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf),",", addcomma,format='(A,A,A,A)'
+mt = systime(elapsed=file_modtime(inf),/utc,/julian)
+caldat, mt, mon,day,year,hh,mm,ss
+ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
+mt = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
+
 printf, lun, 'Software Version,20210411,',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
@@ -307,11 +312,11 @@ endfor
 ; and extra tags
 ;
 printf, lun, 'ExtraTags,RDF Extra Tags begin here,',addcomma
-printf, lun, 'file_date,', nowstring, ',s,', addcr
+printf, lun, 'file_date,', mt, ',s,Creation date of orginal rdf file', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
-units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal']
-unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence jd [d]','Receive start time [d]','Receive mean time [d]','Calendar RX midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthet range [au]','Min RA [h]','Mean RA [h]','Max RA [h]','Min Dec [deg]','Mean Dec [deg]','Max Dec [deg]','Name of original RDF file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if OK']
+units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal','file_date','xmit_sta']
+unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence jd [d]','Receive start time [d]','Receive mean time [d]','Calendar RX midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthet range [au]','Min RA [h]','Mean RA [h]','Max RA [h]','Min Dec [deg]','Mean Dec [deg]','Max Dec [deg]','Name of original RDF file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if OK','Date this file was written','Transmit station']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
