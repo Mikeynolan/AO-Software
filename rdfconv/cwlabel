@@ -77,7 +77,7 @@ foreach $file (@ARGV) {
 # Find our how many columns
     my $count = (tr /,//);
     $ncols = $count + 1;
-    if ($ncols != 3) {
+    if ($ncols != 4) {
      print STDERR "The labels for 2-column aren't right yet, you'll need to fix them up\n";
     }
     $replace{'XXXNCOLS'} = $ncols;
@@ -489,14 +489,19 @@ XXXTARGETPROPS          </radar:Target_Properties>
           <description>Tag Name</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>pol1</name>
+          <name>tagvalpol1</name>
           <data_type>ASCII_Real</data_type>
-          <description>pol 1 value</description>
+          <description>Tag Value for polarization 1</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>pol2</name>
+          <name>tagvalpol2</name>
           <data_type>ASCII_Real</data_type>
-          <description>pol 2 value</description>
+          <description>Tag Value for polarization 2</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>Comment</name>
+          <data_type>UTF8_String</data_type>
+          <description>definition and inits in []</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
@@ -523,7 +528,12 @@ XXXTARGETPROPS          </radar:Target_Properties>
         <Field_Delimited>
           <name>format</name>
           <data_type>UTF8_String</data_type>
-          <description>Tag Intended Format</description>
+          <description>Tag Intended Format, f=float, d=double, s=string, i=integer</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>Units</name>
+          <data_type>UTF8_String</data_type>
+          <description>description and units in []</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
@@ -546,12 +556,17 @@ XXXTARGETPROPS          </radar:Target_Properties>
         <Field_Delimited>
           <name>pol1</name>
           <data_type>ASCII_Real</data_type>
-          <description>Polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
+          <description>Echo power spectral density in polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
         </Field_Delimited>
         <Field_Delimited>
           <name>pol2</name>
           <data_type>ASCII_Real</data_type>
-          <description>Polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
+          <description>Echo power spectral density in polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>Comment</name>
+          <data_type>UTF8_String</data_type>
+          <description>Comment or units</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
