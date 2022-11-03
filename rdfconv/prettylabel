@@ -25,6 +25,7 @@ if ($opt_L) {
    $lid = join "_", @here;
    $lid .= "_$name";
    $lid = lc $lid;
+   $lid = ($lid =~ s/\.pdf$//);
    $here = File::Spec->catdir(@here);
    $title= "Pretty CW plot for $here";
    $desc="Smoothed and summed spectrum for $here. This plot can be created by summing all of the spectra in this directory and smoothing as stated in the plot.";
