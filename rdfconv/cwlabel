@@ -499,7 +499,7 @@ XXXTARGETPROPS          </radar:Target_Properties>
           <description>Tag Value for polarization 2</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>Comment</name>
+          <name>description</name>
           <data_type>UTF8_String</data_type>
           <description>definition and inits in []</description>
         </Field_Delimited>
@@ -516,9 +516,9 @@ XXXTARGETPROPS          </radar:Target_Properties>
         <fields>XXXNCOLS</fields>
         <groups>0</groups>
         <Field_Delimited>
-          <name>tag</name>
+          <name>extratag</name>
           <data_type>UTF8_String</data_type>
-          <description>Tag Name</description>
+          <description>Extra Tag Name</description>
         </Field_Delimited>
         <Field_Delimited>
           <name>value</name>
@@ -531,7 +531,7 @@ XXXTARGETPROPS          </radar:Target_Properties>
           <description>Tag Intended Format, f=float, d=double, s=string, i=integer</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>Units</name>
+          <name>description</name>
           <data_type>UTF8_String</data_type>
           <description>description and units in []</description>
         </Field_Delimited>
@@ -554,19 +554,19 @@ XXXTARGETPROPS          </radar:Target_Properties>
           <description>Offset from Ephemeris frequency</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>pol1</name>
+          <name>pol1power</name>
           <data_type>ASCII_Real</data_type>
           <description>Echo power spectral density in polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>pol2</name>
+          <name>pol2power</name>
           <data_type>ASCII_Real</data_type>
           <description>Echo power spectral density in polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
         </Field_Delimited>
         <Field_Delimited>
-          <name>Comment</name>
+          <name>unused</name>
           <data_type>UTF8_String</data_type>
-          <description>Comment or units</description>
+          <description>Unused column (needed for header)</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
