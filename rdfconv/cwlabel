@@ -158,7 +158,7 @@ foreach $file (@ARGV) {
       $writepdsversion = $cells[1];
     } elsif ($cells[0] =~ /rttim/) {
       $rtt = $cells[1];
-      $targetprops .= "            <radar:roundtrip-lighttime unit=\"s\">$rtt</radar:roundtrip-lighttime>\n";
+      $targetprops .= "            <radar:transmitter_to_receiver_lighttime unit=\"s\">$rtt</radar:transmitter_to_receiver_lighttime>\n";
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1] * 1000;
       $txprops .= "<radar:tx_power unit=\"W\">$txpwr</radar:tx_power>\n";
