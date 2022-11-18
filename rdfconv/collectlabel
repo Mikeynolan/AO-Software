@@ -10,7 +10,7 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_V);
+our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_V);
 our $tfh;
 our ($title, $lid, $descr, $date, $year, $docname, $editor, $version);
 
@@ -18,9 +18,10 @@ $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 sub main::HELP_MESSAGE {
  print STDERR <<EOT;
-Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
+Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
          Targets is the list of targets. dates is the list of dates data.csv and docs.csv are the inventory files for the data and documentation directories, respectively.
     -T:  Set title (required)
+    -L:  Set bundle LID (required)
     -d:  Set Description (required)
     -e:  Set editor *required* 
     -I:  date - default: use today
@@ -32,16 +33,20 @@ EOT
  exit;
 }
 
-getopts('T:e:d:D:I:V:h');
+getopts('T:e:d:D:I:L:V:h');
 
 if ($opt_e) {
  $editor = $opt_e;
 } else {
  die "Editor option is required";
 }
+if ($opt_L) {
+  $lid=$opt_L;
+} else {
+  die "Bundle LID option is required";
+}
 if ($opt_T) {
   $title=$opt_T;
-  $lid=lc $title;
 } else {
   die "title option is required";
 }
@@ -435,8 +440,8 @@ sub getctemplate {
 #
 our $templatec = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<Product_Collection xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd">
+<?xml-model href="https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Collection xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.xsd">
   <Identification_Area>
     <logical_identifier>urn:nasa:pds:XXXLIDXXX:XXXTYPEXXX</logical_identifier>
     <version_id>1.0</version_id>
