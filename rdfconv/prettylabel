@@ -3,7 +3,11 @@
 use Cwd;
 use File::Spec;
 use Getopt::Std qw(getopts);
+use strict;
 our $opt_L;
+our ($here,$filename,$vol);
+our ($bundlelid,$lid);
+our ($title,$desc);
 
 getopts('L:');
      
@@ -13,8 +17,8 @@ if ($opt_L) {
     die "bundlelid is required";
 }
 
-   $name = $ARGV[0];
-   $here = cwd();
+   my $name = $ARGV[0];
+   ($vol,$here,$filename) = File::Spec->splitpath($name);
    my @here = File::Spec->splitdir($here);
    while (!($here[0] =~ "document"))  {
            if ($#here < 0) {die "couldn't find document directory in path to make sumpretty label: Need whole path";}
@@ -23,7 +27,7 @@ if ($opt_L) {
 # and get rid of the "document" per Bea
    shift @here;
    $lid = join "_", @here;
-   $lid .= "_$name";
+   $lid .= "$filename";
    $lid = lc $lid;
    $lid = ($lid =~ s/\.pdf$//);
    $here = File::Spec->catdir(@here);
