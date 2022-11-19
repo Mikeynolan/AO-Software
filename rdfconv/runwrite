@@ -114,7 +114,7 @@ if ($#prettyfile >= 0 && -e $prettyfile) {
     if ( ! $opt_l) {
       `mkdir -p $docpath; mv $newprettyfile $docpath/$newprettyfile`;
     }
-    `cd $docpath ; prettylabel -L $bundlelid $newprettyfile`;
+    `cd $docpath ; prettylabel -L $bundlelid $docpath/$newprettyfile`;
   } else {
     print "Not in data tree, can't install prettyfile\n";
   }
