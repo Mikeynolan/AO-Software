@@ -1,5 +1,6 @@
 #!/usr/bin/perl -w
 #use Text::CSV;
+use File::Spec;
 use Getopt::Std qw(getopts);
 use strict;
 use warnings;
@@ -84,7 +85,8 @@ if ($opt_D) {
   $docname =~ s/([\w']+)/\u\L$1/;
 }
  $replace{'XXXPTITLE'} = $title;
- $replace{'XXXFILENAME'} = $file;
+ my ($vol,$path,$fname) = File::Spec->splitpath($file);
+ $replace{'XXXFILENAME'} = $fname;
  $replace{'XXXEDITOR'} = $editor;
  $replace{'XXXDESCRIPTION'} = $descr;
  $replace{'XXXDATE'} = $date;
