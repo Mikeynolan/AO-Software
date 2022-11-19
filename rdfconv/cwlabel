@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 #use Text::CSV;
 use Getopt::Std qw(getopts);
+use File::Spec;
 use strict;
 use warnings;
 
@@ -39,6 +40,7 @@ foreach $file (@ARGV) {
  my %replace;
  $replace{'XXXBUNDLELID'} = $bundlelid;
  open(my $fh, "< $file") || die;
+ my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
  my $author = '';
  my $editor = '';
  my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
@@ -176,7 +178,7 @@ foreach $file (@ARGV) {
  $replace{'XXXNTAGS'} = $ntags;
  $replace{'XXXNEXTRA'} = $nextra;
  $replace{'XXXNDATA'} = $ndata;
- $replace{'XXXCSVFILE'} = $file;
+ $replace{'XXXCSVFILE'} = $filename;
  $replace{'XXXPTITLE'} = "$pname $start";
  $lcfile = lc $file;
  $lcstart = lc $start;
