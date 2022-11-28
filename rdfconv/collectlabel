@@ -10,20 +10,21 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_V);
+our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_O, $opt_V);
 our $tfh;
-our ($title, $lid, $descr, $date, $year, $docname, $editor, $version);
+our ($title, $lid, $descr, $date, $year, $docname, $editor, $version, $doi);
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 sub main::HELP_MESSAGE {
  print STDERR <<EOT;
-Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
+Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" -O DOI [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
          Targets is the list of targets. dates is the list of dates data.csv and docs.csv are the inventory files for the data and documentation directories, respectively.
     -T:  Set title (required)
     -L:  Set bundle LID (required)
     -d:  Set Description (required)
     -e:  Set editor *required* 
+    -O:  DOI *required*
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
@@ -33,7 +34,7 @@ EOT
  exit;
 }
 
-getopts('T:e:d:D:I:L:V:h');
+getopts('T:e:d:D:I:L:O:V:h');
 
 if ($opt_e) {
  $editor = $opt_e;
@@ -44,6 +45,11 @@ if ($opt_L) {
   $lid=$opt_L;
 } else {
   die "Bundle LID option is required";
+}
+if ($opt_O) {
+  $doi=$opt_O;
+} else {
+  die "DOI option is required";
 }
 if ($opt_T) {
   $title=$opt_T;
@@ -161,6 +167,7 @@ if(grep (/urn:.*instrument:goldstone.dss14_70m.trans_x/, @daturns)) {
 my %replace;
 $replace{'XXXPTITLEXXX'} = $title;
 $replace{'XXXLIDXXX'} = $lid;
+$replace{'XXXDOIXXX'} = $doi;
 $replace{'XXXFILENAMEXXX'} = $file;
 $replace{'XXXEDITORXXX'} = $editor;
 $replace{'XXXDESCRIPTIONXXX'} = $descr;
@@ -385,7 +392,7 @@ our $templateb = <<EOT;
     <Citation_Information>
       <author_list>XXXEDITORXXX</author_list>
       <publication_year>XXXYEARXXX</publication_year>
-      <doi>10.26033/TBD</doi>
+      <doi>XXXDOIXXX</doi>
       <description>-</description>
     </Citation_Information>
   </Identification_Area>
@@ -451,7 +458,7 @@ our $templatec = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
-      <doi>10.26033/TBD</doi>
+      <doi>XXXDOIXXX</doi>
       <description>-</description>
     </Citation_Information>
   </Identification_Area>

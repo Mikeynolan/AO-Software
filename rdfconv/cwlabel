@@ -11,15 +11,16 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h, $opt_L);
+our ($opt_t, $opt_h, $opt_L, $opt_O);
 our $tfh;
 
-getopts('t:L:h');
+getopts('O:t:L:h');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwlabel -L bundlelid [-t template] [-h] file.csv [file.csv ...]
-    -L:  LID for bundle, to be prepended onto ite  LIDs
+Usage: cwlabel -L bundlelid -O DOI [-t template] [-h] file.csv [file.csv ...]
+    -L:  LID for bundle, to be prepended onto ite  LIDs (required)
+    -O:  DOI (required)
     -t:  Use template as a template for the xml. Default is internal template
     -h:  Print this message.
 EOT
@@ -30,6 +31,12 @@ if ($opt_t) {
 } else {
  open($tfh, "<", gettemplate()) || die;
 }
+my $doi;
+if($opt_O) {
+  $doi = $opt_O;
+} else {
+  die "Must provide doi";
+}
 my $bundlelid;
 if($opt_L) {
   $bundlelid = $opt_L;
@@ -39,6 +46,7 @@ if($opt_L) {
 foreach $file (@ARGV) {
  my %replace;
  $replace{'XXXBUNDLELID'} = $bundlelid;
+ $replace{'XXXDOIXXX'} = $doi;
  open(my $fh, "< $file") || die;
  my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
  my $author = '';
@@ -428,7 +436,7 @@ our $template3 = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <doi>10.26033/TBD</doi>
+      <doi>XXXDOIXXX</doi>
       <description>Radar Doppler spectrum converted from RDF format</description>
     </Citation_Information>
   </Identification_Area>

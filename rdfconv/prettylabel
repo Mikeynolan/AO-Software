@@ -4,13 +4,18 @@ use Cwd;
 use File::Spec;
 use Getopt::Std qw(getopts);
 use strict;
-our $opt_L;
+our ($opt_L,$opt_O);
 our ($here,$filename,$vol);
-our ($bundlelid,$lid);
+our ($bundlelid,$lid,$doi);
 our ($title,$desc);
 
-getopts('L:');
+getopts('L:O:');
      
+if ($opt_O) {
+    $doi = $opt_O;
+} else {
+    die "doi is required";
+}
 if ($opt_L) {
     $bundlelid = $opt_L;
 } else {
@@ -33,4 +38,4 @@ if ($opt_L) {
    $here = File::Spec->catdir(@here);
    $title= "Pretty CW plot for $here";
    $desc="Smoothed and summed spectrum for $here. This plot can be created by summing all of the spectra in this directory and smoothing as stated in the plot.";
-   `cwplotlabel -e "Nolan, M.C." -T "$title" -d "$desc" -L $bundlelid -l "$lid" $name`;
+   `cwplotlabel -e "Nolan, M.C." -T "$title" -d "$desc" -L $bundlelid -l "$lid" -O $doi $name`;

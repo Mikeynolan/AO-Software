@@ -11,6 +11,8 @@ open ($dates, ">> dates") || die "couldn't open dates for writing";
 
 while (<>) {
   if (/(urn:[^<]+)/) {
+    my $urn = $1;
+    if (/context/) {next;}
     print $urns "P,$1::1.0\r\n";
   }
   if ($nextistarget) {
