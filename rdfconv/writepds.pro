@@ -44,7 +44,7 @@ common pdsBlock,pds
 if keyword_set(help) then begin
 print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
-print, "       /reset changes all to the default
+print, "       /reset changes all to the default"
 print, "       sets one or more required values for PDS. Names can be:"
 print, "       infile: OVERRIDE original rdf file in tags"
 print, "       target: OVERRIDE target listed in tags."
@@ -56,7 +56,7 @@ print, "       level: Product Processing Level, default is 'Calibrated'"
 print, "       facet: Science Search Facet, default='Tabulated,Physical Properties'"
 print, "       version: Product version. Default is '1.0'"
 print, "       waves: Wavelength range, default = 'Microwave'"
-print, "       bookmark: override default bookmark string. Depending on xmit_sta
+print, "       bookmark: override default bookmark string. Depending on xmit_sta"
 print, "                 tag, defaults to"
 print, "                 'AO TX;AO RX;AO RI' or"
 print, "                 'DSS14 TX;DSS14 RX'"
@@ -251,50 +251,59 @@ err = openOutfile(lun,outfile,'csv',/get_lun,_extra=_ext)
 if err ne 0 then return
 
 ; Construct and print some PDS header strings
-printf, lun, '# Keywords,',addcomma
-printf, lun, 'Product Name,',qq(pds.pname),addcomma
-printf, lun, 'Product Description,CW spectrum converted from RDF format',addcomma
-printf, lun, 'Product Version,',qq(pds.version),addcomma
-printf, lun, 'Start Time,', startstring,addcomma
-printf, lun, 'Stop Time,', endstring, addcomma
-printf, lun, 'Target Name,', qq(mytarget), addcomma
-printf, lun, 'Target Type,', qq(pds.ttype), addcomma
-if notnull(pds.author) then printf, lun, 'Author List,', qq(pds.author), addcomma
-if notnull(pds.editor) then printf, lun, 'Editor List,', qq(pds.editor), addcomma
-printf, lun, 'Product Processing Level,', qq(pds.level), addcomma
-printf, lun, 'Science Search Facet,', qq(pds.facet), addcomma
-printf, lun, 'Product Wavelength Ranges,',qq(pds.waves), addcomma
+printf, lun, '# Keywords,,',addcomma
+printf, lun, 'Product Name,',qq(pds.pname),",",addcomma
+printf, lun, 'Product Description,CW spectrum converted from RDF format',",",addcomma
+printf, lun, 'Product Version,',qq(pds.version),",",addcomma
+printf, lun, 'Start Time,', startstring,",",addcomma
+printf, lun, 'Stop Time,', endstring,",", addcomma
+printf, lun, 'Target Name,', qq(mytarget),",", addcomma
+printf, lun, 'Target Type,', qq(pds.ttype),",", addcomma
+if notnull(pds.author) then printf, lun, 'Author List,', qq(pds.author),",", addcomma
+if notnull(pds.editor) then printf, lun, 'Editor List,', qq(pds.editor),",", addcomma
+printf, lun, 'Product Processing Level,', qq(pds.level),",", addcomma
+printf, lun, 'Science Search Facet,', qq(pds.facet),",", addcomma
+printf, lun, 'Product Wavelength Ranges,',qq(pds.waves),",", addcomma
 ; next should be replaced with istruments and telescopes
-printf, lun, 'Observing System Bookmark,', qq(bookmark), addcomma 
+printf, lun, 'Observing System Bookmark,', qq(bookmark),",", addcomma 
 inf = getextral(extratags,'infile')
 if notnull(pds.infile) then inf = pds.infile
-if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf), addcomma,format='(A,A,A)'
-printf, lun, 'Software Version,20210411',addcomma
+if notnull(inf) then printf, lun, 'Original CW data file,', qq(inf),",", addcomma,format='(A,A,A,A)'
+mt = systime(elapsed=file_modtime(inf),/utc,/julian)
+caldat, mt, mon,day,year,hh,mm,ss
+ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
+mt = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
+
+printf, lun, 'Software Version,20210411,',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)
 nowstring = string(yy,mon,dd,hh,mm,ss,format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
-printf, lun, 'Creation Date,', nowstring, addcomma
+printf, lun, 'Creation Date,', nowstring,",", addcomma
 
 ;
-; Now tags
+; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
-printf, lun, '# Tags,',addcomma
+units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1']
+unitslist=['Receive start: seconds from midnight [s]','Receive Stop: seconds from midnight [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies','Left channel of signal region','Right channel of signal region','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number','First hop offset [Hz]']
+printf, lun, 'Tags,RDF Tags begin here,',addcomma
 ; Should allow override
-skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs']
+skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs','zepch','kpts']
 tagnames = strlowcase(tag_names(tags[0]))
 for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
   if count gt 0 then continue
+unitid = where(strlowcase(tagnames[i]) eq units, count)
+  if count gt 0 then un = unitslist[unitid] else un = ''
   if threecol then begin
 ; can do either columns or _n
 ;    tn = string(tagnames[i], format='(a,"_1,")')
 ;    printf, lun, tn, tags[0].(i), addcomma
 ;    tn = string(tagnames[i], format='(a,"_2,")')
 ;    printf, lun, tn, tags[1].(i), addcomma
-     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),addcr,format='(A,",",A,",",A,A)')
+     o = string(tagnames[i],arf(tags[0].(i)),arf(tags[1].(i)),un,addcr,format='(A,",",A,",",A,",",A,A)')
   endif else begin
-     o = string(tagnames[i],arf(tags[0].(i)),addcomma,format='(A,",",A,A)')
+     o = string(tagnames[i],arf(tags[0].(i)),addcr,format='(A,",",A,",",A,",",A)')
   endelse
   printf, lun,o
 endfor
@@ -302,40 +311,44 @@ endfor
 ;
 ; and extra tags
 ;
-printf, lun, '# Extra Tags,',addcomma
-printf, lun, 'file_date,', nowstring, ',s', addcr
+printf, lun, 'ExtraTags,RDF Extra Tags begin here,',addcomma
+printf, lun, 'file_date,', mt, ',s,Creation date of orginal rdf file', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
+units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal','file_date','xmit_sta']
+unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence jd [d]','Receive start time [d]','Receive mean time [d]','Calendar RX midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthet range [au]','Min RA [h]','Mean RA [h]','Max RA [h]','Min Dec [deg]','Mean Dec [deg]','Max Dec [deg]','Name of original RDF file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if OK','Date this file was written','Transmit station']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
   if count gt 0 then continue
-  printf, lun, extratags[i].name, ',', qq(extratags[i].value), ',', extratags[i].format,addcr
+  unitid = where(strlowcase(extratags[i].name) eq units, count)
+  if count gt 0 then un = unitslist[unitid] else un = ''
+  printf, lun, format='(A,",",A,",",A,",",A,A)', extratags[i].name, qq(extratags[i].value), extratags[i].format,un,addcr
 endfor
 ;These were fixed up: keep in skiptags
-printf, lun, 'xmit_poln,', polstring, ',s', addcr
-printf, lun, 'timezone,UTC,s',addcr
+printf, lun, 'xmit_poln,', polstring, ',s,Transmit polarization', addcr
+printf, lun, 'timezone,UTC,s,Timezone for dates and times',addcr
 
 ;Column definitions
 
-printf, lun, "# Column Definitions,", addcomma
+printf, lun, "# Column Definitions,,", addcomma
 if threecol then begin
-  printf, lun, 'frequency,pol1,pol2',addcr
-  printf, lun, 'real,real,real',addcr
-  printf, lun, 'Hz,,',addcr
-  printf, lun, ',,',addcr
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline',addcr
+  printf, lun, 'frequency,pol1,pol2,',addcr
+  printf, lun, 'real,real,real,',addcr
+  printf, lun, 'Hz,,,',addcr
+  printf, lun, ',,,',addcr
+  printf, lun, format='(A,A)', 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,Polarization 2 normalized to unit standard deviation and zero mean in baseline,',addcr
 endif else begin
-  printf, lun, 'frequency,pol1',addcr
-  printf, lun, 'real,real',addcr
-  printf, lun, 'Hz,',addcr
-  printf, lun, 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline',addcr
+  printf, lun, 'frequency,pol1,',addcr
+  printf, lun, 'real,real,',addcr
+  printf, lun, 'Hz,,',addcr
+  printf, lun, format='(A,A)', 'Offset from Ephemeris frequency,Polarization 1 normalized to unit standard deviation and zero mean in baseline,',addcr
 endelse
 
 ;
 ; and now the data
 ;
-printf, lun, '# Data,', addcomma
+printf, lun, '# Data,,', addcomma
 
 dfreq = tags[0].dfreq
 posfr = tags[0].posfr
@@ -345,11 +358,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,A1)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,",",A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,a1)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,",",a1)'
   endfor
 endelse
 

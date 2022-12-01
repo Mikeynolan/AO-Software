@@ -3,7 +3,7 @@ pro pointing, datafile=datafile, yymmdd=yymmdd, buffer=buffer, perr=perr, herr=h
 ; For chris stack stuff. Note that this defines 'stack', so keyword needs
 ; to be something else - used st
 common stackBlock,stacki,stack1,stack,nstacki,nstack1,nstack
-
+!except=2
 if keyword_set(help) then begin
    print, " "
    print, "Usage:  pointing[, datafile='datafile', yymmdd=yymmdd, buffer=#, perr=#, herr=#, /average, /silent, /noplot, /multi, /outfile, /plotfile, plotKeywords]"
@@ -421,11 +421,21 @@ for i=0, n_elements(dates)-1 do begin  ; loop through dates in case of date roll
                interpExtr1 = [interpExtr1, total(plotExtr1[kmin:kmax])/(kmax-kmin+1)*3600.]
                interpavgh = [interpavgh, total(plotavgh[kmin:kmax])/(kmax-kmin+1)-fh]
             endif else begin  ; interpolate
-               interpRot = [interpRot, (plotRot[kmin] + (plotRot[kmax]-plotRot[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
-               interphght = [interphght, (plothght[kmin] + (plothght[kmax]-plothght[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
-               interpExtr0 = [interpExtr0, (plotExtr0[kmin] + (plotExtr0[kmax]-plotExtr0[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
-               interpExtr1 = [interpExtr1, (plotExtr1[kmin] + (plotExtr1[kmax]-plotExtr1[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
-               interpavgh = [interpavgh, plotavgh[kmin] + (plotavgh[kmax]-plotavgh[kmin])/(hr2-hr1)*(rxstart/3600.-hr1)-fh]
+
+               if hr2 eq hr1 then begin ; they can be exactly the same
+
+                 interpRot = [interpRot, plotRot[kmin] ]
+                 interphght = [interphght, plothght[kmin] ]
+                 interpExtr0 = [interpExtr0, plotExtr0[kmin] ]
+                 interpExtr1 = [interpExtr1, plotExtr1[kmin] ]
+                 interpavgh = [interpavgh, plotavgh[kmin]-fh ]
+               endif else begin
+                 interpRot = [interpRot, (plotRot[kmin] + (plotRot[kmax]-plotRot[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
+                 interphght = [interphght, (plothght[kmin] + (plothght[kmax]-plothght[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
+                 interpExtr0 = [interpExtr0, (plotExtr0[kmin] + (plotExtr0[kmax]-plotExtr0[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
+                 interpExtr1 = [interpExtr1, (plotExtr1[kmin] + (plotExtr1[kmax]-plotExtr1[kmin])/(hr2-hr1)*(rxstart/3600.-hr1))*3600.]
+                 interpavgh = [interpavgh, plotavgh[kmin] + (plotavgh[kmax]-plotavgh[kmin])/(hr2-hr1)*(rxstart/3600.-hr1)-fh]
+               endelse
             endelse
 
 ;           add a warning symbol for large excursions in pointing and platform height
@@ -765,11 +775,13 @@ for i=0, n_elements(dates)-1 do begin  ; loop through dates in case of date roll
           for ii = 1, nstack do begin
             jds = getextra('jdstart', stack=ii)
             if (mjd - jds lt 1.d-5) then begin
-              perror = sqrt(interpRot[j]*interpRot[j]+interphght[j]+interphght[j])
-              setextra, 'f', 'perror', perror, comment='pointing error due to tiedown settings [arcsec]', stack=ii
-              setextra, 'f', 'focusoff', interpavgh[j], comment='Focus error [m]', stack=ii
+              perror = sqrt(interpRot[j]*interpRot[j]+interphght[j]*interphght[j])
+              if interpRot[j] lt -990 then perror = 0
+              setextra, 'f', 'perror', perror, comment='pointing error due to tiedown settings [arcsec]. 0 if no valid data', stack=ii
+              setextra, 'f', 'focusoff', (interpavgh[j] lt -990)?0:interpavgh[j], comment='Focus error [m]', stack=ii
               calflg = perror gt perr or abs(interpavgh[j]) gt herr
-              comstr = strcompress("true if pointing error exceeds " + string(perr) + " or focus error is more than " + string(herr) + " m")
+              if interpavgh[j] lt -990 then calflg = -1
+              comstr = strcompress('1 if pointing error exceeds ' + string(perr) + " or focus error is more than " + string(herr) + ' m, -1 if no valid data')
               setextra, 'f', 'badcal', long(calflg), comment=comstr, stack=ii
             endif
           endfor

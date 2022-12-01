@@ -1,0 +1,41 @@
+#!/usr/bin/perl -w
+
+use Cwd;
+use File::Spec;
+use Getopt::Std qw(getopts);
+use strict;
+our ($opt_L,$opt_O);
+our ($here,$filename,$vol);
+our ($bundlelid,$lid,$doi);
+our ($title,$desc);
+
+getopts('L:O:');
+     
+if ($opt_O) {
+    $doi = $opt_O;
+} else {
+    die "doi is required";
+}
+if ($opt_L) {
+    $bundlelid = $opt_L;
+} else {
+    die "bundlelid is required";
+}
+
+   my $name = $ARGV[0];
+   ($vol,$here,$filename) = File::Spec->splitpath($name);
+   my @here = File::Spec->splitdir($here);
+   while (!($here[0] =~ "document"))  {
+           if ($#here < 0) {die "couldn't find document directory in path to make sumpretty label: Need whole path";}
+	   shift @here;
+   }
+# and get rid of the "document" per Bea
+   shift @here;
+   $lid = join "_", @here;
+   $lid .= "$filename";
+   $lid = lc $lid;
+   $lid =~ s/\.pdf$//;
+   $here = File::Spec->catdir(@here);
+   $title= "Pretty CW plot for $here";
+   $desc="Smoothed and summed spectrum for $here. This plot can be created by summing all of the spectra in this directory and smoothing as stated in the plot.";
+   `cwplotlabel -e "Nolan, M.C." -T "$title" -d "$desc" -L $bundlelid -l "$lid" -O $doi $name`;

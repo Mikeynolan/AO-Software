@@ -1,0 +1,529 @@
+#!/usr/bin/perl -w
+#use Text::CSV;
+use Getopt::Std qw(getopts);
+use strict;
+use warnings;
+use POSIX;
+
+# For the cheezy csv parser
+my $sep = ',';
+my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+
+my $file;
+our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_O, $opt_V);
+our $tfh;
+our ($title, $lid, $descr, $date, $year, $docname, $editor, $version, $doi);
+
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+
+sub main::HELP_MESSAGE {
+ print STDERR <<EOT;
+Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" -O DOI [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
+         Targets is the list of targets. dates is the list of dates data.csv and docs.csv are the inventory files for the data and documentation directories, respectively.
+    -T:  Set title (required)
+    -L:  Set bundle LID (required)
+    -d:  Set Description (required)
+    -e:  Set editor *required* 
+    -O:  DOI *required*
+    -I:  date - default: use today
+    -D:  Docname - default: generate from file name by capitalizng and removing extension
+    -t:  Use template as a template for the xml. Default is internal template
+    -V:  Set product version (string, should include V) Default is V1.0
+    -h:  Print this message.
+EOT
+ exit;
+}
+
+getopts('T:e:d:D:I:L:O:V:h');
+
+if ($opt_e) {
+ $editor = $opt_e;
+} else {
+ die "Editor option is required";
+}
+if ($opt_L) {
+  $lid=$opt_L;
+} else {
+  die "Bundle LID option is required";
+}
+if ($opt_O) {
+  $doi=$opt_O;
+} else {
+  die "DOI option is required";
+}
+if ($opt_T) {
+  $title=$opt_T;
+} else {
+  die "title option is required";
+}
+#if ($opt_d) {
+  #$descr = $opt_d;
+#} else {
+  #die "Description option is required";
+#}
+if ($opt_I) {
+  $date = $opt_I;
+  $date =~ /(\d\d\d\d)-\d\d-\d\d/ || die "Date must be YYYY-MM-DD";
+  $year = $1;
+} else {
+  $date = strftime "%F", localtime;
+  $year = strftime "%Y", localtime;
+}
+#if ($opt_D) {
+  #$docname = $opt_D;
+#} else {
+  #$docname = $file;
+  #$docname =~ s/.pdf$//;
+  #$docname =~ s/([\w']+)/\u\L$1/;
+#}
+#if ($opt_t) {
+ #open($tfh, "<", $opt_t) || die;
+#} else {
+ #open($tfh, "<", gettemplate()) || die;
+#}
+if ($opt_V) {
+  $version = $opt_V;
+} else {
+  $version = "V1.0";
+}
+
+if ($#ARGV < 3) {
+  HELP_MESSAGE();
+  die;
+}
+  
+my ($tfile, $dfile, $datfile, $docfile) = @ARGV;
+open (my $objs, "<$tfile") || die "Couldn't open targets $tfile";
+chomp (my @objects = <$objs>) ;
+close $objs;
+
+open (my $dates, "<$dfile") || die "Couldn't open dates $dfile";
+my $firstdate = 0;
+my $lastdate;
+while (<$dates>) {
+ chomp;
+ if (! $firstdate && /^.+$/) {
+  $firstdate = $_;
+ }
+ if (/^.+$/) {
+  $lastdate = $_;
+ }
+}
+close $dates;
+
+open(my $urns, "<$datfile") || die "couldn't open data collection $datfile";
+chomp (my @daturns = <$urns>);
+close $urns;
+open($urns, "<$docfile") || die "couldn't open doc collection $docfile";
+chomp (my @docurns = <$urns>);
+close $urns;
+
+# Find the facility info.
+# observatories
+my $ao = 0;
+my $gold = 0;
+my $gbt = 0;
+# facilities
+my $ao305 = 0;
+my $dss14 = 0;
+my $dss13 = 0;
+my $gbtt = 0;
+# instruments
+my $aotx = 0;
+my $aorx = 0;
+my $dss14tx = 0;
+my $dss14rx = 0;
+my $dss13tx = 0;
+my $dss13rx = 0;
+my $gbtrx = 0;
+# which did we use for what
+my $tx = 0;
+my $rx = 0;
+# backends
+my $aori = 0;
+my $pfs = 0;
+
+if(grep (/urn:.*observatory.arecibo/, @daturns)) {$ao=1;}
+if(grep (/urn:.*:telescope:arecibo.305m/, @daturns)) {$ao305=1;}
+if(grep (/urn:.*instrument:arecibo.305m.trans_s/, @daturns)) {
+  $aotx=1;
+  $tx = -1;
+}
+if(grep (/urn:.*instrument:arecibo.305m.recv_s/, @daturns)) {
+  $aorx=1;
+  $rx = -1;
+}
+if(grep (/urn:.*observatory.goldstone/, @daturns)) {$gold=1;}
+if(grep (/urn:.*telescope:goldstone.dss14_70m/, @daturns)) {$dss14=1;}
+if(grep (/urn.*:instrument:goldstone.dss14_70m.recv_x/, @daturns)) {
+  $dss14rx=1;
+  $tx = -14;
+}
+if(grep (/urn:.*instrument:goldstone.dss14_70m.trans_x/, @daturns)) {
+  $dss14tx=1;
+  $tx = -14;
+}
+
+my %replace;
+$replace{'XXXPTITLEXXX'} = $title;
+$replace{'XXXLIDXXX'} = $lid;
+$replace{'XXXDOIXXX'} = $doi;
+$replace{'XXXFILENAMEXXX'} = $file;
+$replace{'XXXEDITORXXX'} = $editor;
+$replace{'XXXDESCRIPTIONXXX'} = $descr;
+$replace{'XXXDATEXXX'} = $date;
+$replace{'XXXSTARTXXX'} = $firstdate;
+$replace{'XXXSTOPXXX'} = $lastdate;
+$replace{'XXXYEARXXX'} = $year;
+$replace{'XXXDOCNAMEXXX'} = $docname;
+$replace{'XXXVERSIONXXX'} = $version;
+my $obssys= obssys();
+$replace{'XXXOBSSYSXXX'} = $obssys;
+my $targets;
+foreach (@objects) {
+  my $tname = $_;
+# Insert space in provisional designations
+  if ($tname =~ /(\d{4})([A-Z]{2}.*)/) {
+    $tname = "$1 $2";
+  }
+$targets .= "    <Target_Identification>
+      <name>$tname</name>
+      <type>Asteroid</type>
+    </Target_Identification>";
+}
+ $replace{'XXXTARGETSXXX'} = $targets;
+ $replace{'XXXNUMRECXXX'} = $#daturns+1;
+ $replace{'XXXTYPEXXX'} = "data";
+ $replace{'XXXCTYPEXXX'} = "Data";
+
+
+# And do the replace on the templates.
+ my $regex = join "|", map { quotemeta } keys %replace;
+ $regex = qr/$regex/;
+
+open($tfh, "<", getbtemplate()) || die;
+
+ my $xmlname = "bundle_$lid.xml";
+ open (my $xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $xfh;
+ close $tfh,
+
+open($tfh, "<", getctemplate()) || die;
+ $xmlname = "collection_${lid}_data.xml";
+ open ($xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $xfh;
+
+rewind $tfh;
+ $xmlname = "collection_${lid}_document.xml";
+ $replace{'XXXTYPEXXX'} = "document";
+ $replace{'XXXCTYPEXXX'} = "Document";
+ $replace{'XXXNUMRECXXX'} = $#docurns+1;
+ $regex = join "|", map { quotemeta } keys %replace;
+ $regex = qr/$regex/;
+ open ($xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $xfh;
+
+
+
+sub obssys {
+# We need to parse the bookmarks and create a string with the various pieces
+# This is probably easiest to do pretty brute force.
+
+
+my %sta= (
+  -9 => 'GBT',
+  -14 => 'DSS-14',
+  -13 => 'DSS-13',
+  -1 => 'Arecibo'
+);
+
+my $sysname;
+if ($tx == $rx) {
+ $sysname="Monostatic " . $sta{$tx} . " Radar";
+} else {
+ $sysname="Bitstatic " . $sta{$tx} . "-" . $sta{$rx} . " Radar";
+}
+my $obssys = <<EOT;
+    <Observing_System>
+      <name>$sysname</name>
+EOT
+if ($ao) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory</name>
+        <type>Host</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:facility:observatory.arecibo</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($ao305) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>305-m fixed spherical reflecting antenna</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:arecibo.305m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aotx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Planetary Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.trans_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aorx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo 2380 MHz Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($gold) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Complex</name>
+        <type>Host</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:facility:observatory.goldstone</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>70-m steerable parabolic radio telescope</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:goldstone.dss14_70m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14tx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.recv_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14rx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.trans_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($pfs) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Radar Portable Fast Sampler</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+if ($aori) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory Radar Interface</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+# Close out
+$obssys .= "    </Observing_System>";
+return $obssys;
+}
+sub getbtemplate {
+#
+# THere are issues both with having this here and with a separate file.
+#
+our $templateb = <<EOT;
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Bundle xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.xsd">
+  <Identification_Area>
+    <logical_identifier>urn:nasa:pds:XXXLIDXXX</logical_identifier>
+    <version_id>1.0</version_id>
+    <title>XXXPTITLEXXX V1.0</title>
+    <information_model_version>1.19.0.0</information_model_version>
+    <product_class>Product_Bundle</product_class>
+    <Citation_Information>
+      <author_list>XXXEDITORXXX</author_list>
+      <publication_year>XXXYEARXXX</publication_year>
+      <doi>XXXDOIXXX</doi>
+      <description>-</description>
+    </Citation_Information>
+  </Identification_Area>
+  <Context_Area>
+    <Time_Coordinates>
+      <start_date_time>XXXSTARTXXX</start_date_time>
+      <stop_date_time>XXXSTOPXXX</stop_date_time>
+    </Time_Coordinates>
+    <Primary_Result_Summary>
+      <purpose>Science</purpose>
+      <processing_level>Calibrated</processing_level>
+      <Science_Facets>
+        <wavelength_range>Microwave</wavelength_range>
+        <discipline_name>Small Bodies</discipline_name>
+        <facet1>Physical Properties</facet1>
+      </Science_Facets>
+    </Primary_Result_Summary>
+    <Investigation_Area>
+      <name>None</name>
+      <type>Other Investigation</type>
+      <Internal_Reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.none</lid_reference>
+        <reference_type>bundle_to_investigation</reference_type>
+      </Internal_Reference>
+    </Investigation_Area>
+XXXOBSSYSXXX
+XXXTARGETSXXX
+  </Context_Area>
+  <Bundle>
+    <bundle_type>Archive</bundle_type>
+    <description>-</description>
+  </Bundle>
+  <Bundle_Member_Entry>
+    <lidvid_reference>urn:nasa:pds:XXXLIDXXX:document::1.0</lidvid_reference>
+    <member_status>Primary</member_status>
+    <reference_type>bundle_has_document_collection</reference_type>
+  </Bundle_Member_Entry>
+  <Bundle_Member_Entry>
+    <lidvid_reference>urn:nasa:pds:XXXLIDXXX:data::1.0</lidvid_reference>
+    <member_status>Primary</member_status>
+    <reference_type>bundle_has_data_collection</reference_type>
+  </Bundle_Member_Entry>
+</Product_Bundle>
+EOT
+
+return \$templateb;
+}
+
+sub getctemplate {
+#
+# THere are issues both with having this here and with a separate file.
+#
+our $templatec = <<EOT;
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Collection xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 https://www.naic.edu/~nolan/pds4/pds/v1/PDS4_PDS_1J00.xsd">
+  <Identification_Area>
+    <logical_identifier>urn:nasa:pds:XXXLIDXXX:XXXTYPEXXX</logical_identifier>
+    <version_id>1.0</version_id>
+    <title>XXXPTITLEXXX XXXVERSIONXXX</title>
+    <information_model_version>1.19.0.0</information_model_version>
+    <product_class>Product_Collection</product_class>
+    <Citation_Information>
+      <editor_list>XXXEDITORXXX</editor_list>
+      <publication_year>XXXYEARXXX</publication_year>
+      <doi>XXXDOIXXX</doi>
+      <description>-</description>
+    </Citation_Information>
+  </Identification_Area>
+  <Context_Area>
+    <Time_Coordinates>
+      <start_date_time>XXXSTARTXXX</start_date_time>
+      <stop_date_time>XXXSTOPXXX</stop_date_time>
+    </Time_Coordinates>
+    <Primary_Result_Summary>
+      <purpose>Science</purpose>
+      <processing_level>Calibrated</processing_level>
+      <Science_Facets>
+        <wavelength_range>Microwave</wavelength_range>
+        <discipline_name>Small Bodies</discipline_name>
+        <facet1>Physical Properties</facet1>
+      </Science_Facets>
+    </Primary_Result_Summary>
+    <Investigation_Area>
+      <name>None</name>
+      <type>Other Investigation</type>
+      <Internal_Reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.none</lid_reference>
+        <reference_type>collection_to_investigation</reference_type>
+      </Internal_Reference>
+    </Investigation_Area>
+XXXOBSSYSXXX
+XXXTARGETSXXX
+  </Context_Area>
+  <Collection>
+    <collection_type>XXXCTYPEXXX</collection_type>
+  </Collection>
+  <File_Area_Inventory>
+    <File>
+      <file_name>collection_XXXLIDXXX_XXXTYPEXXX_inventory.csv</file_name>
+      <local_identifier>XXXTYPEXXX</local_identifier>
+      <records>XXXNUMRECXXX</records>
+    </File>
+    <Inventory>
+      <offset unit="byte">0</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <records>XXXNUMRECXXX</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>2</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>Member Status</name>
+          <field_number>1</field_number>
+          <data_type>ASCII_String</data_type>
+          <maximum_field_length unit="byte">1</maximum_field_length>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>LIDVID_LID</name>
+          <field_number>2</field_number>
+          <data_type>ASCII_LIDVID_LID</data_type>
+          <maximum_field_length unit="byte">255</maximum_field_length>
+        </Field_Delimited>
+      </Record_Delimited>
+      <reference_type>inventory_has_member_product</reference_type>
+    </Inventory>
+  </File_Area_Inventory>
+</Product_Collection>
+EOT
+
+return \$templatec;
+}
+
