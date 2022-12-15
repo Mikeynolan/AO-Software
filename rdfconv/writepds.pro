@@ -358,11 +358,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(E16.8,",",E16.8,",",E16.8,",",A1)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e16.8,",",e16.8,",",e16.8,",",A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],addcr,format='(E16.8,",",E16.8,",",a1)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(e16.8,",",e16.8,",",a1)'
   endfor
 endelse
 
@@ -901,14 +901,18 @@ function arf, number
 ;
 ;format reals the way I want them.
 ;integers should be spelled out up to more digits than G allows.
-if (abs(number) lt 1.e16) && (number eq long64(number)) then begin
+isfloat = (size(number,/type) eq 4)
+if (abs(number) lt (isfloat?1.e7:1.e16)) && (number eq long64(number)) then begin
   text = string(number, format='(i0)')
 endif else begin
-  if size(number,/type) eq 4 then fmt = '(g16.8)' else fmt='(g24.17)'
+; Unfortunately, g gives different precision depending on whether
+; it does "f" or "e", so specify e to assure full precision of input file
+  if isfloat then fmt = '(e16.8)' else fmt='(e24.17)'
   text = string(number, format=fmt)
 end
 if not strmatch(text,'*[0-9].[0-9]*') then begin
-; Fix each of the three things that could be missing.
+; Fix each of the three things that could be missing: decimal
+; point and at least one digit before and after it.
   if not strmatch(text, '*.*') then begin
    pos = strpos(text, 'e')
    if pos lt 0 then text = text + '.' else begin

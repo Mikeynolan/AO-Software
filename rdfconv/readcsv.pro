@@ -56,7 +56,7 @@ for ifile = 0L, filecount-1 do begin
   infile = filelist[ifile]
 ; Open the input file; if that doesn't work, try it with an '.rdf' extension
 
-  err = openInfile(lun,infile,'csv',/get_lun)
+  err = openInfile(lun,infile,/get_lun,silent=silent)
   if err ne 0 then return
 
 ; Make sure that the input file isn't empty
@@ -131,7 +131,6 @@ for ifile = 0L, filecount-1 do begin
 
   free_lun, lun
 
-  if not keyword_set(silent) then print, "Reading csv file ", infile
   csv=read_csv(infile, count=count, types=replicate('string',4))
 
 ; First check for markers
