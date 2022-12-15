@@ -358,11 +358,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,",",A1)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(E16.8,",",E16.8,",",E16.8,",",A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,",",a1)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(E16.8,",",E16.8,",",a1)'
   endfor
 endelse
 
@@ -904,7 +904,8 @@ function arf, number
 if (abs(number) lt 1.e16) && (number eq long64(number)) then begin
   text = string(number, format='(i0)')
 endif else begin
-  text = string(number, format='(g0)')
+  if size(number,/type) eq 4 then fmt = '(g16.8)' else fmt='(g24.17)'
+  text = string(number, format=fmt)
 end
 if not strmatch(text,'*[0-9].[0-9]*') then begin
 ; Fix each of the three things that could be missing.
