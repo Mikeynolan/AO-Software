@@ -8,7 +8,7 @@ Created on Mon Mar  6 20:53:54 2023
 
 import numpy as np
 import pandas as pd
-from scipy import signal
+import sys
 import argparse
 
 def main():
@@ -35,6 +35,8 @@ def main():
                         help="File stem to construct output files"
                         "Default is \"spec\" ",
                         default="spec")
+    parser.add_argument("-n", "--noweight", action="store_true",
+                        help="Don't weight sum by variance")
     parser.add_argument("-u", "--uncalibrated", action="store_true",
                         help="Don't apply calibration factors. Gives unweighted sum")
     args = parser.parse_args()
@@ -49,12 +51,14 @@ def main():
     for i in args.file:
         try:
             d=pd.read_csv(i,header=None)
-        except pd.errors.ParserError:
-            raise Exception("Unable to parse csv file %s" %i)    
+        except:
+            print("Unable to parse csv file %s, quitting" %i, file=sys.stderr)    
+            sys.exit(-1)
         try:
             sdevline=d[d[0]=='sdev'].index.tolist()[0]
         except IndexError:
-            raise Exception("Couldn't find sdev in file %s. Quitting" % i)
+            print("Couldn't find sdev in file %s. Quitting" % i, file=sys.stderr)
+            sys.exit(-1)
         sdrow=d[:][sdevline:sdevline+1]
         sdev1=float(sdrow[1])
         sdev2=float(sdrow[2])
@@ -64,18 +68,25 @@ def main():
             fac2 = 1
         else:
             if sdev1 <= 0 or sdev2 <= 0:
-                raise ValueError("Zero or negative sdev, can't calibrate.")
+                print("Zero or negative sdev in file"
+                      " %s, can't calibrate. Quitting." % i)
+                sys.exit(-1)
             fac1 = sdev1
             fac2 = sdev2
-        wt1 = 1/fac1/fac1
-        wt2 = 1/fac2/fac2
+        if args.noweight:
+            wt1 = 1
+            wt2 = 1
+        else:
+            wt1 = 1/fac1/fac1
+            wt2 = 1/fac2/fac2
         wtsum1 += wt1
         wtsum2 += wt2
         try:
             datastart=d[d[0]=='# Data'].index.tolist()[0]+1
         except IndexError:
-            raise Exception("Couldn't find data start marker in file"
+            print("Couldn't find data start marker in file"
                            " %s. Quitting" % i)
+            sys.exit(-1)
         data=d[:][datastart:]
         pol1=data[1].to_numpy(dtype=float)
         pol2=data[2].to_numpy(dtype=float)
@@ -93,11 +104,11 @@ def main():
             arr1 = np.vstack((arr1,pol1*fac1))
             arr2 = np.vstack((arr2,pol2*fac2))
             if nf != freq.size:
-                errstr=("Number of channels in file %s is %d but earlier "
-                "files have %d") % (i, freq.size,nf)
-                raise Exception(errstr)
-        sum1 = sum1 / wtsum1
-        sum2 = sum2 / wtsum2
+                print(("Number of channels in file %s is %d but earlier "
+                "files have %d") % (i, freq.size,nf))
+                sys.exit(-1)
+    sum1 = sum1 / wtsum1
+    sum2 = sum2 / wtsum2
     df1=pd.DataFrame(data=np.vstack((freq,arr1)).transpose(),
                      columns=['Frequency']+args.file)
     df2=pd.DataFrame(data=np.vstack((freq,arr2)).transpose(),
