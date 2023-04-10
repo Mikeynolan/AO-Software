@@ -11,7 +11,7 @@ import pandas as pd
 def readcsvspec(files,calibrate=True):
     """Ingest PDS Radar Spectra
 
-    This routine reds in a series of PDS Radar spectra CSV files and parses
+    This routine reads in a series of PDS Radar spectra CSV files and parses
     the data and the metadata.
     
     Parameters
@@ -20,7 +20,7 @@ def readcsvspec(files,calibrate=True):
         List of one or more csv files in the PDS radar spectra format. 
     
     
-    calibrate : bool
+    calibrate : bool (default True)
         By default the spectra are returned as calibrated cross-section by
         multiplying each spectrum by the sdev tag.
         if calbrate is False they will remain normalized to unit standard 

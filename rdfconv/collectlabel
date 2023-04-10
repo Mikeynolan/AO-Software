@@ -403,7 +403,7 @@ our $templateb = <<EOT;
     </Time_Coordinates>
     <Primary_Result_Summary>
       <purpose>Science</purpose>
-      <processing_level>Calibrated</processing_level>
+      <processing_level>Partially Processed</processing_level>
       <Science_Facets>
         <wavelength_range>Microwave</wavelength_range>
         <discipline_name>Small Bodies</discipline_name>
@@ -469,7 +469,7 @@ our $templatec = <<EOT;
     </Time_Coordinates>
     <Primary_Result_Summary>
       <purpose>Science</purpose>
-      <processing_level>Calibrated</processing_level>
+      <processing_level>Partially Processed</processing_level>
       <Science_Facets>
         <wavelength_range>Microwave</wavelength_range>
         <discipline_name>Small Bodies</discipline_name>
