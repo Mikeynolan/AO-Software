@@ -1,14 +1,12 @@
+forward_function cwc_integ
+
 pro cwcross, out, range, stack=st, zero=zero, smooth=smooth, chan=chan, xrange=xrange, maxf=maxf, siglim=siglim, error=error, id=id, diff=diff, file=file, noset=noset, help=help,_extra=_extra
 ;
 ;
 ;  cwcross lives in the cmagri idl processing world and uses some
-;  low-level interfaces.  It requires integ and f from ~nolan, which have
-;  not been integrated into the package.
-;  TODO: rename those to get them out of a trivial namespace and integrate
-;  into this file.
+;  low-level interfaces.
 ;
 ;
-
 
 ; cwcross loads the requested pair, then plots the integral of the (by default OC) spectrum. It then asks you to click two end points.
 ; It integrates the signal between the two and computes the total and the (purely statstical) uncertainty. It includes both thermal
@@ -55,6 +53,9 @@ if keyword_set(st) then begin
     print, "ERROR in cwcross: stack entry "+strtrim(string(st),2)+" doesn't exist"
     return
   endelse
+endif else if (*loaded).ndata le 2 then begin
+  print,"ERROR in cwcross: stack not specified and there's no loaded pair to use"
+  return
 endif
 
 pol=0
@@ -103,7 +104,7 @@ dims = size(array, /dimensions)
 out = dblarr(2)
 if (not keyword_set(zero)) then zero = 0.0d0
 
-ipa = integ(parray)
+ipa = cwc_integ(parray)
 if (keyword_set(diff)) then begin
 plot, freq, parray, xrange=xrange, _extra=_extra
 endif else begin
@@ -121,11 +122,11 @@ print, "Using siglim:", x1, x2
 endif else begin
 
   print, 'click on left point'
-  f, x1, y1
+  cwc_f, x1, y1
 
   wait, 0.3
   print, 'click on right point'
-  f, x2, y2
+  cwc_f, x2, y2
 
   if x2 lt x1 then begin
 	temp = x1
@@ -249,4 +250,38 @@ if (n_params() gt 2) then range = lindgen(r-l+1) + l
 
 if keyword_set(lun) then free_lun, lun
 
+end
+
+function cwc_integ, var
+; Copied from integ.pro, but here to be self-containd
+
+s = size(var)
+
+if (s[0] eq 0) then return, var
+
+type = s[s[0]+1]
+n = s[s[0]+2]
+
+
+out = dblarr(n, /nozero)
+out[0] = var[0]
+for i=1L, n-1 do out[i] = out[i-1] + var[i]
+
+return, out
+
+end
+
+pro cwc_f, x, y
+; Copied from f.pro, but here to be self-containd
+
+cursor, p, q, wait=3
+print, 'x=', p, ' y=', q
+case(n_params()) of
+2: begin 
+x=p
+y=q
+end
+1: x=q
+0:
+endcase
 end
