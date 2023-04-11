@@ -1,0 +1,35 @@
+#!/bin/sh
+#To make the files, go to the top level directry and feed runrunwrite the list of log_o#utput files. Filenames need to be complete paths. Can do just the labels if you change runrunwrite to call runwrite with -l. Note: The bundle name is hard-coded in runwrite, may need to change. May also need to change the version, probably in the runwrite call to cwlabel.
+
+#Then use an rsync to get just the files you want. Here's the command if copying from arecibo. Note that you can sh this file to run it :).
+
+rsync -azv --prune-empty-dirs --include='*/' --include='*.csv' --include='*pdf' --include='*.xml' --exclude='*' 192.231.95.39::prstor0/radar/PDS .
+
+exit
+
+
+Need to get the info for the bundle. There's a set of templates in doctemplates. May need some editing mainly for the description, AA_whatever, and maybe references. Copy them to the document directory: They need to be in the inventory.
+
+If you're doing a subset, do that again with another rsync.
+
+go to each of the data and document directories and:
+
+find . -name \*xml -print | xargs collectbundle
+
+That will make a csv file, dates, and targets. The csv is make by just grepping for urn: You need to sort and uniq all three. You need the targets and dates files from data, not document. Note: I have edited colectbundle since last running it to remove the observatory info which shouldn't be here.
+Rename the csvs to be
+collection_bundlename_data_inventory
+collection_bundlename_document_inventory
+and leave the in the respective directory. move data/dates and data/targets to the top level and go there.
+
+Now it's
+collectlabel -d "Desc" -T "Arecibo Radar Doppler Spectra" -e "Nolan,M.C." -L gbo.ast.radar.arecibo.doppler_spectra targets dates */collection_*csv
+You can fill the description here or edit it later. That will make the collection_*.xls files and the bundle.xls file. 
+
+delete the dates and targets files. Hmm, it wouldn't be crazy to keep a targets file for the bundle.
+
+If you need to make more doc files:
+
+pdf2pdfa will convert to PDS-happy pdf. Cwplotlabel can make labels for pdf files.
+
+If you want to make another text file, just copy another label. Don't forget to change the urn.
