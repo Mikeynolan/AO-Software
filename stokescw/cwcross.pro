@@ -1,4 +1,14 @@
 pro cwcross, out, range, stack=st, zero=zero, smooth=smooth, chan=chan, xrange=xrange, maxf=maxf, siglim=siglim, error=error, id=id, diff=diff, file=file, noset=noset, help=help,_extra=_extra
+;
+;
+;  cwcross lives in the cmagri idl processing world and uses some
+;  low-level interfaces.  It requires integ and f from ~nolan, which have
+;  not been integrated into the package.
+;  TODO: rename those to get them out of a trivial namespace and integrate
+;  into this file.
+;
+;
+
 
 ; cwcross loads the requested pair, then plots the integral of the (by default OC) spectrum. It then asks you to click two end points.
 ; It integrates the signal between the two and computes the total and the (purely statstical) uncertainty. It includes both thermal
