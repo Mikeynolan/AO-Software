@@ -37,7 +37,7 @@ writeapdsfile,pairpointer,outfile,chan=chan,_extra=_ext
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
+pro setpds,show=show,infile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
 
 common pdsBlock,pds
 
@@ -46,7 +46,7 @@ print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
 print, "       /reset changes all to the default"
 print, "       sets one or more required values for PDS. Names can be:"
-print, "       infile: OVERRIDE original rdf file in tags"
+print, "       infile: OVERRIDE original rdf file in tags (not recommended)"
 print, "       target: OVERRIDE target listed in tags."
 print, "       pname: Product Name. REQUIRED, no default."
 print, "       ttype: Target Type. Default: 'Asteroid'"
@@ -63,6 +63,13 @@ print, "                 'DSS14 TX;DSS14 RX'"
 print, "       You can clear a value by setting it to ''"
 endif
                
+idlversion = float(!VERSION.release)
+minversion = 8.6
+if (idlversion lt minversion) then begin
+  print, "IDL version 8.6 or higher required for writepds"
+  return
+endif
+
 if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Partially Processed', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
@@ -170,6 +177,14 @@ if n_params() lt 2 or keyword_set(help) then begin
   return
 endif
 
+idlversion = float(!VERSION.release)
+minversion =8.6
+if (idlversion lt minversion) then begin
+  print, 'IDL version 8.6 or higher required for writepds'
+  return
+endif
+
+
 ; pairpointter is a pointer to either the loaded pair or a stack entry. I *think* they look the same.
 ;pds is a structure containg the PDS keywords that aren't natively in the data
 
@@ -218,7 +233,7 @@ if isnull(pds.pname) then begin
   return
 end
 if isnull(pds.author) + isnull(pds.editor) ne 1 then begin
-  print, "Must have either an author or an editor"
+  print, "Must have either an author or an editor,but not both"
   return
 end
 ;
