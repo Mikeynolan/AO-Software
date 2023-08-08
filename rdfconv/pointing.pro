@@ -295,6 +295,7 @@ for i=0, n_elements(dates)-1 do begin  ; loop through dates in case of date roll
       lr.zagr = interpol(za, hragc, hrlr)  ; interpolate the zenith angle data
    endif
 
+
    ; call platform pointing model with year and distomat data
    ; returns results in the rotI structure
 

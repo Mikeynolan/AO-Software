@@ -2,6 +2,16 @@
 
 # Program chris_craft version 1.9 - with checks for rxsecnoise (caltm < rxsecnoise)
 #
+#CONFIGURE
+# $AOSPATH = "/some/common/bin/";
+# $AOBPATH = "/some/fedora4/bin/";
+# if you want to hard code the path like at Arecibo. Use trailing slash.
+# Otherwise, set iit to empty.
+$AOSPATH = "";
+$AOBPATH = "";
+# Can set the idl path here. Leave undefined if not needed.
+# $AOIDLPATH = "/data/PIRL1/radar/idl"
+#
 #       /pkg/aosoft/common/bin/
 #       /home/ptaylor/bin/
 #
@@ -256,7 +266,7 @@ if (defined($opt_t))  # user provided powers as space-delimited list
     if (defined($opt_p)) { $txpowerop = "-p $opt_p" } else { $txpowerop = ""}
 
     print "\nParsing transmitter power log ...\n";
-    $txpowerout = `/pkg/aosoft/common/bin/txpower $txpowerop -d $datafile`;  # grab txpower output for times in datafile
+    $txpowerout = `${AOSPATH}txpower $txpowerop -d $datafile`;  # grab txpower output for times in datafile
     print "$txpowerout";
     
     if ($txpowerout =~ "ERROR") { exit }  # quit chris_craft if power log is bad
@@ -308,8 +318,8 @@ if ($#txpower != $numscans-1) {
 
 $firstscan = 1;	 # rather than literal scan number
 print "\nProgram $myname: Calling drv_cw.sc \n",
-    " /pkg/aosoft/common/bin/drv_cw.sc $drvfile $firstscan $numscans \n\n";
-@drvoutput = `/pkg/aosoft/common/bin/drv_cw.sc $drvfile $firstscan $numscans 2>&1`;
+    " ${AOSPATH}drv_cw.sc $drvfile $firstscan $numscans \n\n";
+@drvoutput = `${AOSPATH}drv_cw.sc $drvfile $firstscan $numscans 2>&1`;
 
 # Print drv_cw.sc output to screen
 
@@ -333,8 +343,8 @@ print "\nProgram $myname: Calling stripAzEl \n";
 #  tandgain.c and stripAzEl can also be found in /share/ptaylor/src/stripAzEl
 # Version copied to /pkg/aosoft/fedora4/x86_64/bin/stripAzEl
 
-print " /pkg/aosoft/fedora4/x86_64/bin/stripAzEl -i $drvfile -e $ephemfile < $azelfile \n\n";
-@azeloutput = `/pkg/aosoft/fedora4/x86_64/bin/stripAzEl -i $drvfile  -e $ephemfile < $azelfile 2>&1`;
+print " ${AOBPATH}stripAzEl -i $drvfile -e $ephemfile < $azelfile \n\n";
+@azeloutput = `${AOBPATH}stripAzEl -i $drvfile  -e $ephemfile < $azelfile 2>&1`;
 
 # Print stripAzEl output to screen
 
@@ -360,9 +370,9 @@ print "However, it is recommended to work through the script line by line and ed
 
 print "Byteswapping data...\n\n";
 
-`/pkg/aosoft/fedora4/x86_64/bin/byteswap $fstem.p1 > tmp1`;
+`${AOBPATH}byteswap < $fstem.p1 > tmp1`;
 `mv tmp1 $fstem.p1`;
-`/pkg/aosoft/fedora4/x86_64/bin/byteswap $fstem.p2 > tmp2`;
+`${AOBPATH}byteswap < $fstem.p2 > tmp2`;
 `mv tmp2 $fstem.p2`;
 
 # Fin.
@@ -381,9 +391,9 @@ sub header_values {
 # showriscans:  Read scan info via showriscans and print to screen
 
     print "\n$myname: Calling showriscans \n";
-    print " /pkg/aosoft/common/bin/showriscans $datafile \n\n";
+    print " ${AOSPATH}showriscans $datafile \n\n";
 
-    @scans_show = `/pkg/aosoft/common/bin/showriscans $datafile`;  # store output
+    @scans_show = `${AOSPATH}showriscans $datafile`;  # store output
     $numscans= (scalar(@scans_show)) - 1;   # count scans (less 1 intro line)
 
     print "showriscans found $numscans scans: \n\n";
@@ -397,9 +407,9 @@ sub header_values {
 # dmphdrs: Read headers into array of header-strings
 
     print "\n$myname: Calling dmphdrs \n";
-    print " /pkg/aosoft/common/bin/dmphdrs -f $datafile \n\n";
+    print " ${AOSPATH}dmphdrs -f $datafile \n\n";
 
-    @dmphdrs_arr = `/pkg/aosoft/common/bin/dmphdrs -f $datafile`;  # store output
+    @dmphdrs_arr = `${AOSPATH}dmphdrs -f $datafile`;  # store output
     chomp @dmphdrs_arr;
     print "Finished collecting scan headers \n";
     
@@ -1299,7 +1309,13 @@ sub red_file {
 ; suppress gratuitous screen output and extend IDL path to find relevant procedures
 
 !Quiet = 1
-!path = expand_path('+/home/ptaylor/idl')+':'+!path
+";
+	if (defined ($AOIDLPATH)) {
+	    print RED "
+!path = expand_path('+$AOIDLPATH')+':'+!path
+";
+        }
+	print RED "
 
 ; use the following to look at pointing and raw received power during observations
 
@@ -1313,7 +1329,11 @@ pointing, datafile='$datafile', /plotfile, /outfile;, /help
 
 ; start reduction procedure
 
-@~cmagri/idl/cwinit
+@";
+	if (defined($ADIDLPATH)) {
+	    print RED "${AOIDLPATH}/";
+	}
+	print RED "cwinit
 setup, /reset
 setup, 'tzcorr', 4L
 setup, 'srate', ${sample_rate}L

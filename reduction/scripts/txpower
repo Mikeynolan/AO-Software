@@ -1,5 +1,20 @@
 #!/usr/bin/perl
 #
+##  CONFIGURE
+# This script uses $AOMETADATA as the search place for logs, can also set
+# a default here. Comment out if not desired.
+# TODO: This assumes only one path for metadata, will need changed if
+# subdirs are needed.
+$ao_metadatadefault="/data/aodata/obs4/lro";
+#$ao_metadatadefault="/share/obs4/lro";
+#
+#$AOPATH="/some/path/";
+if (! defined ($AOPATH)) { $AOPATH = ""; }
+#If you want to hard code the path like at Arecibo, put the path here.
+#Otherwise set it to empty.
+#Note: It must end with a slash, so that if it's *not* set, you 
+#will get the default.
+#
 # 2013 Dec 28  PT : added -t option to search for power near a requested time
 # 2014 Jan 13  PT : removed -t option, see below
 #                   added -f and -l options to average values between times
@@ -26,7 +41,7 @@
 #                   modified some 'die' statements to 'print/exit' to allow
 #                    chris_craft to react to them
 # 2022 Aug 14  PT : added check for date request on same date logfile renamed
-#
+# 2023 Jul 26  MCN: add enviroment variable to set paths for AO metadata
 
 use Getopt::Std;
 #use strict;
@@ -43,7 +58,7 @@ $usage = "\nUsage: txpower [-a -v -p logfile -r RTT -u uniqueTime -f startTime -
 Default output with no options is full dump of monlro power logs\n
  -a = user-given times are in AST (will be converted to UT)
  -v = verbose output of power values between -f and -l times
- -p logfile = filename of power log (default = auto-select from /share/obs4/lro/pwrdata.log.*)
+ -p logfile = filename of power log (default = auto-select from $mdpath/pwrdata.log.*)
  -r RTT = round-trip time in seconds (to subtract from user-given times, overrides calculation by -d)
  -b buffer = find only valid transmitter powers within buffer minutes of requested times (default = 10 or 5*RTT)
  -u 'time' = grep one unique time ('YYYY-MM[M]-DD HH:MM:SS' in UT)
@@ -156,7 +171,7 @@ if ($opt_d) {  # use showriscans to get times from datafile
     {
 	$opt_a = 1;  # must also envoke the -a option since receive times are in AST
 
-	open (DATA, "/pkg/aosoft/common/bin/showriscans $opt_d |");
+	open (DATA, "${AOPATH}showriscans $opt_d |");
 	while ($line = <DATA>) {
 	    if ($line =~ "^Date:([0-9]{4})-([0-9]{2})-([0-9]{2}) Time:([0-9]{2}):([0-9]{2}):([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}) Scan") {
 		$opt_f = $1.$2.$3.$4.$5.$6;  # collect RX start time
@@ -183,6 +198,13 @@ if ($opt_p) {  # user provided
 
 } else {  # auto-detect proper power log
 
+	if(defined $ENV{'AO_METADATA'}) {
+		$mdpath=$ENV{'AO_METADATA'};
+	} elsif (defined(${ao_metadatadefault})) {
+		$mdpath=${ao_metadatadefault};
+	} else {  print "\n ERROR:  No file specified and no path set for power monitor data.\n\n"; exit;
+	}
+
     if ($#starttimes > -1)  # if there are start times with -f, -u, -l, or -d get yymmdd
     {
 
@@ -196,10 +218,10 @@ if ($opt_p) {  # user provided
 
 	if (($yymmdd > 200619) && ($yymmdd < 200723)) { print "\n ERROR:  Do not trust monlro power logs from this date!  Check logbook for operator power level.\n         If running chris_craft, use -t flag!\n\n"; exit }
 
-	@powerloglist = `ls /share/obs4/lro/pwrdata.log.??????`;  # power logs moved by Phil
+	@powerloglist = `ls $mdpath/pwrdata.log.??????`;  # power logs moved by Phil
 
 	chomp @powerloglist;
-	push(@powerloglist, "/share/obs4/lro/pwrdata.log.000");  # add the current power log file
+	push(@powerloglist, "$mdpath/pwrdata.log.000");  # add the current power log file
 
 	for ($i = 0; $i < $#powerloglist; $i++)  # loop through filenames
 	{
@@ -212,10 +234,10 @@ if ($opt_p) {  # user provided
 	for ($i = $#powerlogdates; $i >= 0; $i--)  # find closest power log date
 	{
 	    if ($yymmdd <= $powerlogdates[$i]) { $logfile = "$powerloglist[$i]" }
-	    if ($yymmdd == $powerlogdates[$i]) { print "\n WARNING:  Date requested matches date power logs were moved!\n           Using /share/obs4/lro/pwrdata.log.$powerlogdates[$i] but may need to use -p with the\n            next file in /share/obs4/lro/pwrdata.log.* if no valid data is returned!\n" }
+	    if ($yymmdd == $powerlogdates[$i]) { print "\n WARNING:  Date requested matches date power logs were moved!\n           Using $mdpath/pwrdata.log.$powerlogdates[$i] but may need to use -p with the\n            next file in $mdpath/pwrdata.log.* if no valid data is returned!\n" }
 	}
 	
-    } else { $logfile = "/share/obs4/lro/pwrdata.log.000" }  # otherwise use current logfile
+    } else { $logfile = "$mdpath/pwrdata.log.000" }  # otherwise use current logfile
 
 }
 
