@@ -70,6 +70,8 @@ if (! $opt_l) {
   open ($scrf, ">", "pdsscript.pro") || die;
 
   print $scrf <<EOF;
+\@phil
+\@rirawinit
 \@cwinit
 .r /home/nolan/idl/writepds
 resetstack
@@ -86,7 +88,7 @@ writestackpds, '$pdsfile', /over
 EOF
   close $scrf;
 
-  `idl86 < pdsscript.pro`;
+  `idl87 < pdsscript.pro`;
 }
 `cwlabel -L $bundlelid -O $doi *.csv`;
 my $datanum = -1;
