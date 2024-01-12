@@ -7,7 +7,7 @@ $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n,$opt_l);
 
-my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra";
+my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids_v1.0";
 my $doi = "10.26033/j028-3a58";
 getopts("nlh");
 
@@ -71,7 +71,7 @@ if (! $opt_l) {
 
   print $scrf <<EOF;
 \@cwinit
-.r /home/nolan/idl/writepds
+.r /home/pirl/nolan/idl/writepds
 resetstack
 readrdf, '$rdffile'
 setpds, pname='${obj}_${pdate}_doppler_spectra'
@@ -86,7 +86,7 @@ writestackpds, '$pdsfile', /over
 EOF
   close $scrf;
 
-  `idl86 < pdsscript.pro`;
+  `idl < pdsscript.pro`;
 }
 `cwlabel -L $bundlelid -O $doi *.csv`;
 my $datanum = -1;
