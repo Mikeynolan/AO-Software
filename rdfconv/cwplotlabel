@@ -11,16 +11,16 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_l, $opt_L, $opt_O);
+our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_l, $opt_L, $opt_O,$opt_S);
 our $tfh;
 our ($title, $descr, $date, $year, $docname, $editor, $lid);
-our ($bundlelid,$doi);
+our ($bundlelid,$doi,$obssys);
 
-getopts('T:t:e:d:D:I:hl:L:O:');
+getopts('T:t:e:d:D:I:hl:L:O:S:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l lid -O DOI [-I date] [-t template] [-D "Docname"] [-h] file.pdf
+Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l lid -O DOI [-I date] [-t template] [-D "Docname"] [-S obssysfile] [-h] file.pdf
     -T:  Set title (required)
     -d:  Set Description (required)
     -e:  Set editor *required* 
@@ -30,6 +30,7 @@ Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l li
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
+    -S:  obssysfile   file with ovserving system xml
     -h:  Print this message.
 EOT
  exit;
@@ -78,6 +79,11 @@ if ($opt_t) {
 } else {
  open($tfh, "<", gettemplate()) || die;
 }
+if ($opt_S) {
+  $obssys = do{local(@ARGV,$/)=$opt_S;<>};
+} else {
+  $obssys="";
+}
 
 foreach $file (@ARGV) {
   my %replace;
@@ -101,6 +107,7 @@ if ($opt_D) {
  $replace{'XXXDOCNAME'} = $docname;
  $replace{'XXXLIDXXX'} = $lid;
  $replace{'XXXBUNDLELID'} = $bundlelid;
+ $replace{'XXXOBSSYS'} = $obssys;
 
 # And do the replace on the template.
  my $regex = join "|", map { quotemeta } keys %replace;
@@ -140,6 +147,9 @@ our $template3 = <<EOT;
       <description>XXXDESCRIPTION</description>
     </Citation_Information>
   </Identification_Area>
+  <Observation Area>
+XXXOBSSYS
+  </Observation Area>
   <Document>
     <document_name>XXXDOCNAME</document_name>
     <editor_list>XXXEDITOR</editor_list>

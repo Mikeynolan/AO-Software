@@ -1,0 +1,1617 @@
+#!/usr/bin/perl
+
+# Program chris_craft version 1.9 - with checks for rxsecnoise (caltm < rxsecnoise)
+#
+#CONFIGURE
+# $AOSPATH = "/some/common/bin/";
+# $AOBPATH = "/some/fedora4/bin/";
+# if you want to hard code the path like at Arecibo. Use trailing slash.
+# Otherwise, set iit to empty.
+$AOSPATH = "";
+$AOBPATH = "";
+# Can set the idl path here. Leave undefined if not needed.
+# $AOIDLPATH = "/data/PIRL1/radar/idl"
+#
+#       /pkg/aosoft/common/bin/
+#       /home/ptaylor/bin/
+#
+# Origin of the name:  http://www.chriscraftboats.com
+# Origin of the script:  written by Alice Hine
+#
+# Usage example:
+#
+# chris_craft [-d diamInKm -P periodInHours -f fftlen -p powerlog -t 'tx1 tx2 ...'] datafile ephemfile | tee log_output
+#
+# -d diameter [in km]; for setting signal limits, RDF tags, and radar albedo (default = 1 km)
+# -P period [in h]; for setting signal limits, RDF tags (default = 1 h)
+# -f fftlen; FFT length to use, 0 means use longest fftlen to get maximum frequency resolution (default = ask user)
+# -p powerlog; filename of power log (default = auto-select from /share/obs4/lro/pwrdata.log.*)
+# -t = single transmitter power value for all scans or quoted space-delimited string [in kW] (default = call txpower)
+#
+# | tee log_output is recommended because it allows one to both enter info as prompted 
+# while saving a record of the reduction process
+#
+# File:	chris_craft
+# Purpose:	chris_craft reduces hopped and unhopped CW data by calling Chris Magri's routines
+#
+# Input:	datafile, ephemfile (in header from 2005 Apr 11)
+#
+# Output:	log_output (ascii) tee'd from stdout (record of all screen output)
+#		driver files (ascii) for drv_cw.sc, stripAzEl, and IDL program
+#		datafiles (binary) written by drv_cw.sc and stripAzEl
+#
+# Method:	perl script which gets parameters from datafile headers
+#	 	calls cmagri programs (using perl `backticks`)
+#
+# 2009 Jun 17:  added -d and -p options for diameter and rotation period in azel.input
+#               made canned IDL reduction script more robust
+#
+# 2011 Oct 25:  added command to load Chris Magri's IDL reduction procedures to red_*.pro
+#               changed reduction script depending on whether there are 1 or more scans
+#               noted that siglim command overrides -d and -p flags except in RDF tails
+#               set default txoffset to 150 Hz to match current setups
+#               cleaned up comments and output to make it more readable
+#
+# 2011 Dec 06:  if scans have different parameters (setups), then only those similar to, 
+#                and sequentially after, the very first scan will be kept and the reduction
+#                will proceed according to the parameters of the first scan in the datafile
+#                to prevent crashing when an sbmvdata command was forgotten, e.g., CW and then
+#                ranging in the same datafile (ideally should splitscan datafile beforehand)
+#
+# 2011 Dec 16:  set default txoffset to 2000 Hz to match setup.cw 
+#               set default fftlen to produce the finest attainable resolution (1 "look")
+#               print fftlen as a round number, e.g., 150000 instead of 149999
+#
+# 2012 Feb 13:  reduced initial vignetting to +/- 1000 Hz to avoid filter roll-off
+#               removed omitf option from nohop_finish since txoffset is now far from DC
+#
+# 2012 Apr 14:  instead of throwing out subsequent data with a different rxtime (RTT rolled
+#                over to a new second), use the minimum rxtime for the scans in datafile
+#
+# 2012 Nov 02:  switched back to ~cmagri/bin/stripAzEl as it is updated to 2012 Oct 15 (v1.4)
+#
+# 2012 Nov 08:  check txoffset value to determine if omitf is required for nohop_finish
+#
+# 2012 Nov 28:  fixed bug in rxtime calculation when crossing midnight
+#               stopped using date keys to compare scan parameters in case of date crossing
+#
+# 2012 Dec 07:  print fftlen, frequency resolution, and looks for choice of max fftlen    
+#               added -f flag for desired fftlen (or 0 for finest resolution)
+#               added -t flag for transmitter power (assume same for all scans) (v1.5)
+#               fixed bug when checking for different data types
+#
+# 2012 Dec 10:  modified to work on Linux rather than a Sun (v1.6)
+#                all scripts in /pkg/aosoft/common/bin or /pkg/aosoft/fedora4/x86_64/bin
+#               byteswap the .p1 and .p2 data to big endian so CM's IDL routines switch
+#                it back upon reading with a little-endian machine
+#               added omitfs for txoffsets of 200, 280, 300, 330 Hz (and 4 and 10 kHz)
+#               added some extra comments/steps to IDL procedure
+#
+# 2012 Dec 18:  changed filenaming convention to 4 decimal places so full-fft reductions
+#                have the actual frequency resolution rather than rounded to 0.01
+#
+# 2013 Jan 11:  changed default txoffsets depending on gate width when txoffset not found
+#
+# 2013 Feb 04:  added cmsumpretty and more comments to IDL reduction file
+#               allow for list of transmitter powers as argument to -t flag
+#               bail out if numbers of transmitter powers and valid scans do not match
+# 
+# 2013 Mar 14:  updated to March 6 version of CM's stripAzEl and tandgain routines
+#
+# 2013 May 17:  updated to March 23 version of CM's stripAzEl and tandgain routines
+#               added functionality for hopped data (read hop params from header) (v1.7)
+#
+# 2013 Jul 16:  changed smoothf call to use /gauss keyword
+#
+# 2013 Nov  4:  added detail to hopping reduction
+#               updated to July 4 version of CM's stripAzEl and tandgain routines
+#
+# 2014 Feb 24:  updated stripAzEl call because it was moved
+#               updated byteswap call because it was moved
+#
+# 2014 May  5:  added -flatten option to 'convert' command for GIF output of spectra
+#                to prevent a black background when using ImageMagick 6.5.4-7
+#               noted in screen output and red*.pro that pretty plots require IDL 7.0+
+#
+# 2014 May 15:  added call to txpower to get the average transmitter power per scan (v1.8)
+#
+# 2015 Jan 22:  updated to January 15 version of CM's stripAzEl and tandgain routines
+#
+# 2015 Feb 13:  modified IDL reduction to use variables for names of smoothed data files
+#               use spawn command to convert ps pretty plot to gif
+#
+# 2015 Sep 24:  changed period flag from -p to -P
+#               -p powerLog reads TX powers from non-default monlro power log 
+#
+# 2015 Nov 30:  added siglim and sigmamu commands to hopped reduction
+#
+# 2016 Sep 15:  fixed error in comparison of scan parameters when crossing midnight due to
+#                an apparent change in how 'parray' is ordered (possibly due to a change in
+#                perl version on rserv/coamo/etc.)
+#
+# 2016 Nov 10:  changed default graphical output from .gif to .png for unhopped data
+#
+# 2017 Mar 14:  changed default graphical output from .gif to .png for hopped data
+#               added maxf to dehop command to avoid DC during baselining
+#               removed first siglim call after dehop, use -d and -P instead
+#
+# 2018 Jul 11:  stripAzEl updated to include post-Maria gain curve (after 2017 Sep 20)
+#
+# 2019 Aug 21:  added more screen output and commenting for the transmitter power logs
+#
+# 2019 Nov 12:  stripAzEl updated to include Tsys increase since May 2019
+#
+# 2020 Feb 12:  stripAzEl updated to include further Tsys changes and polarization swap in Dec 2019
+#
+# 2020 Mar 19:  added additional checks for values of command-line options
+#               stripAzEl updated to include slight downtick in Tsys since Feb 2020
+#               added functionality to detect rxsecnoise and caltm at end of scans
+#               if TX powers or power log not given, auto-select the power log
+#               added more comments and description
+#
+# 2020 Apr 30:  fixed bug due to restructuring of $parray upon adding rxsecnoise and caltm
+#
+# 2020 May 20:  replaced the multiple-line bline call with new procedure blinecheck.pro
+#               added omitf values for 60-Hz harmonics when there is no TX offset
+#
+# 2020 Jun 09:  added check for fake-hopping setup (setup.cw.hoptx) that uses a dwell of
+#                9999 seconds to make a single hop at the desired TX offset
+#
+# 2020 Jul 14:  removed auto-power log search since txpower will do it already
+#               quit if txpower returns an error
+#
+# 2020 Nov 17:  minor adjustments to red*pro for dehopping and allowing cwcross to 
+#                use the siglim values set earlier
+#
+# 2020 Dec 11:  corrected order of operations to avoid calculating xsec and SC/OC values
+#                from a smoothed spectrum
+#
+# 2022 May 17:  added 'sort' to hash commands to avoid seemingly random key/value order
+#                depending on perl version used (tested on perl v5.16.3 and v5.26.3)
+#
+
+$| = 1;  # flush output; for debugging
+
+# Allow for option flags with associated values
+
+use Getopt::Std;
+getopts('d:f:hp:P:t:z');
+
+# Remind user about this program, current directory, datafile, and ephemeris file
+
+$myname = $0;  # program name as called on command line
+$myver = 1.9;  # 1.9 runs on Linux, can do hopping, calls txpower, and handles noise/cal
+$mydir = `pwd`; chomp ($mydir);  # working directory
+
+print "\nProgram: \t\t$myname $myver  \nRunning in directory: \t$mydir \n";
+
+# Bail if incorrect arguments or help flags
+
+if ((@ARGV != 2) || ($opt_h) || ($opt_z)) {
+    print "\nUsage: \t chris_craft [-d diamInKm -P periodInHours -f fftlen -t 'tx1 tx2 ...'] datafile ephemfile | tee log_output";
+    print "\n -d diameter [in km]; for setting signal limits, RDF tags, and radar albedo (default = 1 km)";
+    print "\n -P period [in h]; for setting signal limits, RDF tags (default = 1 h)";
+    print "\n    NOTE:  -d and -P flags are most useful for setting the default signal limits in HOPPED data (e.g., MBAs, comets)";
+    print "\n            because the 'dehop' command does not allow modification of siglim prior to baselining; leaving the -d and";
+    print "\n            -P values at defaults forces the default siglim to roughly +/- 15 Hz, too narrow for most MBAs or comae!";
+    print "\n -f fftlen; FFT length to use, 0 means use longest fftlen to get maximum frequency resolution (default = ask user)";
+    print "\n -p powerlog; filename of power log (default = auto-select from /share/obs4/lro/pwrdata.log.*)";
+    print "\n -t = single transmitter power value for all scans or quoted space-delimited string [in kW] (default = call txpower)\n\n";
+    exit;
+}
+
+# Check operating system, migrated to Linux
+
+$osname = $^O;  # collect the operating system name
+ 
+if ($osname =~ "solaris") {
+    print "\n ERROR:  chris_craft has been migrated to Linux!\n\n";
+    exit;
+}
+
+# Check that options have not been forgotten and have reasonable values
+
+for ($opt_d, $opt_P, $opt_f, $opt_t)
+{
+    if (defined && !(/^[.0-9]+/)) { die "\n ERROR:  Options [dPft] must have (positive) numerical values!\n\n" }
+}
+
+if (defined($opt_p))  # check that filename was not forgotten and followed instead by another option flag
+{
+    if ($opt_p =~ "^-") { die "\n ERROR:  Power log filename cannot start with a hyphen (-*)!  Check input!\n\n" }
+}
+
+if ((defined($opt_p)) && (defined($opt_t))) { die "\n ERROR : Cannot specify a power log AND a list of powers!\n\n" }
+
+# Check that datafile exists, is readable, and is binary
+
+$datafile = $ARGV[0];
+print "Data file is: \t\t$datafile \n";
+if (!(-r $datafile) or !(-B $datafile)) { die "\n ERROR:  datafile $datafile is either not found, not readable, or not binary! \n\n" }
+
+# Check that ephemeris exists and is readable
+
+$ephemfile = $ARGV[1];
+print "Ephemeris file is: \t$ephemfile \n";
+if (!(-r $ephemfile)) { die "\n ERROR:  ephemeris $ephemfile is either not found or not readable! \n\n" }
+
+if (defined ($opt_p))
+{
+    if (!(-r $opt_p)) { die "\n ERROR:  Transmitter power log $opt_p is either not found or not readable! \n\n" }
+}
+
+print "\n======================================================================================== \n";
+
+# Read the data headers and collect parameters
+
+&header_values($myname, $datafile);
+&fftparams;
+&filebase;
+
+# Determine the transmitter powers for each scan
+
+if (defined($opt_t))  # user provided powers as space-delimited list
+{
+
+# If the user-provided power is a single 1-, 2-, or 3-digit number, replicate it for all scans
+# else split the space-delimited list of powers to an array
+
+    if (length($opt_t) <= 3) { @txpower = &array_fill($numscans, $opt_t, @txpower) }
+    else { @txpower = split (/\s+/, $opt_t) }
+
+} else {  # use the monlro power logs
+
+# Allow user to choose a power log on the command line, but better to let txpower figure it out
+
+    if (defined($opt_p)) { $txpowerop = "-p $opt_p" } else { $txpowerop = ""}
+
+    print "\nParsing transmitter power log ...\n";
+    $txpowerout = `${AOSPATH}txpower $txpowerop -d $datafile`;  # grab txpower output for times in datafile
+    print "$txpowerout";
+    
+    if ($txpowerout =~ "ERROR") { exit }  # quit chris_craft if power log is bad
+
+# txpower returns a string that includes a line of the form "-t '# # # ...' for the average
+#  power in each scan, which is then split to an array
+
+    if ($txpowerout =~ "-t '([ 0-9]*)'") { $powerstr = $1; @txpower = split (/\s+/, $powerstr) }
+
+}
+
+print "\nTransmitter powers:  @txpower \n";
+print "\n======================================================================================== \n\n";
+
+# txpower will get powers for all scans recorded but chris_craft will automatically
+#  reject scans with different parameters or number of seconds of data, so they could
+#  disagree.  Issue a warning to the user if this happens
+
+if ($#txpower != $numscans-1) {
+    print 
+" ERROR:  Number of transmitter powers found does not match number of valid scans!
+
+         If no transmitter powers were returned, monlro may not have dumped its
+          readings to the logfile yet.  This can happen when trying to reduce 
+          CW immediately after datataking has finished.  Otherwise, monlro may 
+          not have been running at the time (sbhola command not issued).  
+
+         If this is older data, the monlro power log may have been moved.  Check:
+          /share/obs4/lro/ for files of the form pwrdata.log.yymmdd where yymmdd
+          indicates the date the logs were renamed such that they contain data up
+          to that date!  chris_craft (txpower) tries to select this automatically,
+          but check that the correct power log is being parsed.
+
+         If there are transmitter powers returned, check chris_craft output to 
+          see if a scan was rejected for being too short or long or the scan 
+          parameters changed (e.g., ranging and CW setups same datafile).  Note 
+          txpower output and remove powers for problem scans and re-run chris_craft 
+          with -t 'good powers in kW' option.  If there is a bad scan amongst a 
+          number of good scans, consider using splitscan to separate the scans and 
+          re-cat them into a new datafile. \n\n";
+    exit;
+}
+
+# Write the driver file for drv_cw.sc
+
+&drvcw_file;
+
+# Run the drv_cw.sc script
+
+$firstscan = 1;	 # rather than literal scan number
+print "\nProgram $myname: Calling drv_cw.sc \n",
+    " ${AOSPATH}drv_cw.sc $drvfile $firstscan $numscans \n\n";
+@drvoutput = `${AOSPATH}drv_cw.sc $drvfile $firstscan $numscans 2>&1`;
+
+# Print drv_cw.sc output to screen
+
+print @drvoutput, "\n";
+print "Files created by drv_cw.sc: \n"; 
+$srcNm = $params{'srcNm'};
+@lsoutput = `ls $srcNm*hdr $srcNm*p?`;
+print @lsoutput;
+
+print "\n======================================================================================== \n";
+
+# Write the input file for stripAzEl
+
+&azel_file;
+
+# Run the stripAzEl program
+
+print "\nProgram $myname: Calling stripAzEl \n";
+
+# The current ~cmagri/bin/stripAzEl uses ~cmagri/src/tandgain.c (2020 Mar 20 version)
+#  tandgain.c and stripAzEl can also be found in /share/ptaylor/src/stripAzEl
+# Version copied to /pkg/aosoft/fedora4/x86_64/bin/stripAzEl
+
+print " ${AOBPATH}stripAzEl -i $drvfile -e $ephemfile < $azelfile \n\n";
+@azeloutput = `${AOBPATH}stripAzEl -i $drvfile  -e $ephemfile < $azelfile 2>&1`;
+
+# Print stripAzEl output to screen
+
+print @azeloutput;
+print "File created by stripAzEl: \n";
+@lsoutput = `ls $srcNm*azel`;
+print @lsoutput;
+
+print "\n======================================================================================== \n";
+
+# Write the IDL reduction script
+
+&red_file;
+
+# At IDL prompt, one can simply type @$redfile, but it is better to move through line by line
+
+print "\n";
+print 'Open IDL (version 7.0 or greater is recommended) and type: @', "$redfile to fully reduce CW spectra!\n";
+print "However, it is recommended to work through the script line by line and edit it as necessary!\n\n";
+
+# CM's IDL scripts will try to byteswap the data upon reading it on a 
+#  little-endian machine, so (unfortunately) switch it back to big endian
+
+print "Byteswapping data...\n\n";
+
+`${AOBPATH}byteswap < $fstem.p1 > tmp1`;
+`mv tmp1 $fstem.p1`;
+`${AOBPATH}byteswap < $fstem.p2 > tmp2`;
+`mv tmp2 $fstem.p2`;
+
+# Fin.
+
+exit;
+
+#________________________________________________________________________________
+
+sub header_values {
+
+# header_values gets data parameters (header info) using other subroutines
+# Usage:  &header_values($myname, $datafile);
+    
+    my ($myname, $datafile) = @_;
+    
+# showriscans:  Read scan info via showriscans and print to screen
+
+    print "\n$myname: Calling showriscans \n";
+    print " ${AOSPATH}showriscans $datafile \n\n";
+
+    @scans_show = `${AOSPATH}showriscans $datafile`;  # store output
+    $numscans= (scalar(@scans_show)) - 1;   # count scans (less 1 intro line)
+
+    print "showriscans found $numscans scans: \n\n";
+    print "@scans_show";                    # print showriscans output
+    shift @scans_show; 	                    # remove intro line
+    $scans_show[0] = " " . $scans_show[0];  # add leading space
+    chomp @scans_show;
+
+    print "\n======================================================================================== \n";   
+
+# dmphdrs: Read headers into array of header-strings
+
+    print "\n$myname: Calling dmphdrs \n";
+    print " ${AOSPATH}dmphdrs -f $datafile \n\n";
+
+    @dmphdrs_arr = `${AOSPATH}dmphdrs -f $datafile`;  # store output
+    chomp @dmphdrs_arr;
+    print "Finished collecting scan headers \n";
+    
+# Get first header for each scan from dmphdrs
+
+    &get_scanhdrs ();
+
+# Get parameters from the scan headers (from dmphdrs and showriscans)
+
+    print "\n$myname: Fetching scan parameters from headers \n";
+    &parse_scanhdrs ();
+
+    print "\n======================================================================================== \n";
+    
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub get_scanhdrs {
+
+# get_scanhdrs collects the first header of each scan
+# Usage:   &get_scanhdrs ();
+# Input:   @dmphdrs_arr 
+# Output:  @scan_hdrs is an array of strings, one string per scan
+
+# Headers are output for every record of every scan in the datafile
+# When a new scan starts, the record counter is reset to 1 in header
+# Loop through lines of headers to build up and store only the header
+#  of the first record of each scan
+	
+# Find the first header for each scan
+
+    $lastscanno = 0;       # previous scan number
+    $a = $dmphdrs_arr[0];  # first line of header of first record of first scan
+    $lend = scalar (@dmphdrs_arr);  # length of input array (all lines of all records)
+    $j = 0;                # index of scan_hdrs (output) array
+
+# Start the loop on the second line of the first record of the first scan
+#  then loop through all records of all scans.  The second record of each
+#  scan will trigger the dump of the header for the first record of the scan
+
+    for ($i=1; $i<$lend; $i++) {
+	$rec = $dmphdrs_arr[$i];  # grab current line of a header to test
+	
+# If beginning a new header...
+
+	if ($rec =~ /^Marker:hdr_/) {  # each new header begins with "Marker:hdr_"
+	    $asave = $rec;             # save first line of header for current record
+	    $a =~ /Scan:(.{9})/;       # check for scan number of previous record
+	    $scanno = $1;              # save its scan number 
+
+# Only the second record of a scan will trigger the dump of the first record's header
+	    
+	    if ($scanno != $lastscanno) {  # if scan number of previous record was new
+		$scan_hdrs[$j] = $a;       # put header into array of headers
+		$j++;                      # increment header array
+		$lastscanno = $scanno;     # reset previous scan number
+	    }
+
+	    $a = $asave;  # start the new header string for this record
+		
+# If this is not the beginning of a new header...
+#  check for the current record number for current scan
+#  and add this line to the current header
+
+	} else {
+	    if ($rec =~ /RecNum:(.{6})/) {$recnum = $1; $recnum =~ s/\s*//}
+	    $a = $a . $rec;
+	}
+	    
+    }
+	    
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub parse_scanhdrs {
+
+# parse_scanhdrs reads parameters for each scan from the array of headers
+# Usage:   &parse_scanhdrs ();
+# Input:   @scan_hdrs and the array from showriscans
+# Output:  scan number and output hash %params
+	
+    $numscans = scalar (@scan_hdrs);  # number of scans found in headers
+	
+# showriscans array: get parameters, e.g., Time
+
+    $minrxtime = 9999;  # default to an absurd length of time
+
+    for ($j = 0; $j < $numscans; $j++) {  # loop through showriscans output
+
+	$scans_show[$j] =~ /Time:(.{17})/;  # read in time line
+	($time1,$time2) = split (/-/, $1);  # split by hyphen to start/stop times
+
+	@time = split (/:/, $time1);        # split start time by colons
+	$secM1 = $time[2] + 60.*($time[1] + 60.*($time[0]));  # seconds of day
+
+	@time = split (/:/, $time2);        # split stop time by colons
+	$secM2 = $time[2] + 60.*($time[1] + 60.*($time[0]));  # seconds of day
+
+	$rxtime[$j] = $secM2 - $secM1;      # difference of rx stop and start
+	if ($rxtime[$j] < 0) {$rxtime[$j] += 86400.}  # account for midnight rollover
+
+	$scan_hdrs_bkp[$j] = $scan_hdrs[$j];  # backup in case rxtime must be reduced later
+
+# If rxtimes vary by <=3 seconds, use the minimum rxtime so the scans are not thrown out
+#  when the header parameters are compared later.  Often there is a one-second difference
+#  due to rollover in the roundtrip time.  The value of 3 is chosen as it accounts for the
+#  round-trip time and fiddling with txdownearly (e.g., 2003 SS84 on 2003 Oct 3).  Good
+#  examples for round-trip rollover are 2011 CP4 on 2012 Feb 22 and 2004 FG11 on 2012 Apr 14.
+#  Dropping 3 seconds off of previous scans is typically going to be forgiveable compared
+#  to adding the integration time of the scan(s) that would be otherwise omitted.  One can
+#  always splitscan the datafile to keep scans with the same rxtimes instead.  Also note,
+#  it is difficult to combine files with different frequency resolutions; different rxtimes
+#  can be combined if the same fftlen is selected for each dataset, e.g., 1 Hz resolution.
+
+	if ($rxtime[$j] < $minrxtime) {  # if rxtime is shorter than previous minimum
+	    if ($minrxtime ne 9999) {    # if not the first rxtime
+		if (($minrxtime - $rxtime[$j]) < 4) {  # only if rxtime is shorter by 3 or fewer sec
+
+		    for ($i = 0; $i < $j; $i++){  # go back and reduce earlier scans to new minrxtime
+			print "WARNING:  Scan $i has had rxtime reduced from $rxtime[$i] to $rxtime[$j]!\n";
+			$rxtime[$i] = $rxtime[$j];
+			$scan_hdrs[$i] = $scan_hdrs_bkp[$i] . " rxtime " . $rxtime[$i];  # add to header
+
+		    }
+		} else { print "WARNING:  Scan $j rxtime is much smaller than other rxtimes and will not be changed!\n" }
+	    }
+
+	    $minrxtime = $rxtime[$j];  # set new minimum time
+
+	} elsif ($rxtime[$j] > $minrxtime) {       # if rxtime is longer than previous minimum
+	    if (($rxtime[$j] - $minrxtime) < 4) {  # only if rxtime is longer by 3 or fewer sec
+
+		print "WARNING:  Scan $j has had rxtime reduced from $rxtime[$j] to $minrxtime!\n";
+		$rxtime[$j] = $minrxtime;  # reduce current rxtime to minimum rxtime
+
+	    } else { print "WARNING:  Scan $j rxtime is much greater than other rxtimes and will not be changed!\n" }
+	}
+
+	$scan_hdrs[$j] = $scan_hdrs[$j] . " rxtime " . $rxtime[$j];  # add to header
+    }
+	
+# Get some parameters from the scan headers
+
+    for ($j = 0; $j < $numscans; $j++) {   # loop through headers for each scan
+	$line = $scan_hdrs[$j];	       # grab one scan header
+	&chop_hdr ();                  # get parameters from this header
+	$parray[$j] = $pstring;        # array of standard parameters
+	$hopparray[$j] = $hoppstring;  # array of hopping parameters
+    }
+ 
+    print "\nNumber of scans = $numscans \n";
+
+# The following is useful for debugging if the $errorflag below is tripped
+# Hashes can end up in seemingly random order depending on perl versions, so
+#  added a sort command here and in chop_hdr to homogenize $parray and $hopparray
+    
+    print "\n$ptitle \n";
+    for ($j=0; $j<$numscans; $j++) { print "$parray[$j]\n" }
+#    for ($j=0; $j<$numscans; $j++) { print "$hopparray[$j]\n" }
+#    print "\n";
+    
+# Test for possible changes in data type within the active datafile
+#  allowing for date rollover (scan number, date, pretty_date differences)
+
+    $errflag = 0;
+    $jcount = 0;
+    $test1 = substr ($parray[0], 22, 28);  # packing, caltm, gw, npol
+    $test2 = substr ($parray[0], 65);      # rxsecnoise, rxtime, smpPairIpp, srcNm, txoffset
+    $test3 = substr ($hopparray[0], 9);    # dwell, hopbw, nhops, hopf1
+
+# Compare scan parameters to first scan (do not use dates in case of rollover)
+#  only one index in substr means read to end of string
+
+    for ($j = 1; $j < $numscans; $j++) {
+
+	$text1 = substr ($parray[$j], 22, 28);  # packing, caltm, gw, npol
+	$text2 = substr ($parray[$j], 65);      # rxsecnoise, rxtime, smpPairIpp, srcNm, txoffset
+	$text3 = substr ($hopparray[$j], 9);    # dwell, hopbw, nhops, hopf1
+
+#	print $parray[$j], "\n";
+#	print $test1, $test2, $test3, " versus", $text1, $text2, $text3, "\n";
+
+	if (($text1 ne $test1) || ($text2 ne $test2) || ($text3 ne $test3) || ($text4 ne $test4)) {
+	    print "WARNING: Scan $j has different data from Scan 0 \n";
+	    if ($jcount eq 0) {	$jcount = $j }    # record first differing scan
+	    $errflag = 1;
+	}
+    }
+	
+    print "\n";
+
+# Report warning to screen if header parameters of scans are different
+    
+    if ($errflag == 1) { 
+	print " WARNING: different data types found in datafile!  Only using first $jcount scans! \n\n";
+	$numscans = $jcount;    # only use scans similar to first scan
+	$line = $scan_hdrs[0];  # get first scan parameters again since later parameters differ
+	&chop_hdr ();
+    }
+
+# Print out the final values for parameters from the headers
+
+# NOTE: these are the parameters of the FINAL scan unless $errflag was tripped above
+#       and caused the parameters of the FIRST scan to be read in again
+
+    $firstscan = substr ($parray[0], 0, 9);
+    $params{'firstscan'} = $firstscan;
+    $params{'numscans'} = $numscans;
+
+    print "Final parameters from headers:\n";
+#    print "@{[%params]} \n";  # print a hash
+
+    for $key (sort keys %params) {
+	$padded = $key . ' ' x (12 - length($key));
+	print "$padded $params{$key}\n";
+    }
+
+    if ($hopparams{'nhops'} != 1) {
+	for $key (sort keys %hopparams) {
+	    $padded = $key . ' ' x (12 - length($key));
+	    print "$padded $hopparams{$key}\n";
+	}
+    }
+    
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub chop_hdr {
+
+# chop_hdr calls subroutine match_var
+# Usage:   &chop_hdr ();
+# Input:   $line = string of entire header of first record of one scan
+# Output:  $pstring, %params
+	
+# Get scan number
+
+    if ($line =~ /Scan:(.{9})/) {  # grab scan number from header	
+	$sno = $1;                 # scan number is not in %params hash
+	$sno =~ s/^\s*//;          # trim leading blanks -- for old headers
+    }
+	    
+# Get number of polarizations
+#  fifo = file in, file out order
+#  1 = OC; 2 = SC; 12 = both polarizations read/written in that order
+
+    $test = &match_var($line, "fifo",' fifo:(\d+)');  # match 'fifo' and 1 or 2 digits
+    $fifo = $params{'fifo'};
+    delete $params{'fifo'};
+    if (($fifo == 1) or ($fifo == 2)) { $npol = 1 }  # translate to number of polarizations
+    if ($fifo == 12) { $npol = 2 }
+    $params{'npol'} = $npol;  # store in hash
+	
+# Get remaining parameters
+    
+    $test = &match_var($line, "smpPairIpp", 'smpPairIpp: (.{5})');  # samples per record (ipp)
+    $test = &match_var($line, "Packing",' Packing: (.{2})');  # bits per sample
+    $test = &match_var($line, "gw", 'gw:(.{6})');  # gate width (reciprocal of sampling rate)
+    $test = &match_var($line, "srcNm", 'srcNm: (.{16})');  # source name
+    if ($test == 1) {$params{'srcNm'} = "No_srcNm";}  # if no source name found, give default
+    $test = &match_var($line, "Date", 'Date:(.{7})');  # year and month
+	
+# Some parameters do not have names and are instead unlabeled on lines of 5 parameters
+
+# Get transmitter offset
+
+    $test = &match_var($line, "dar1to5", 'dar1- 5:(.{65})'); 
+    if ($test != 1) {  # no error
+	@dar1to5 = &dar_iar_car_values($params{'dar1to5'});  # divide into 5 values
+	$params{'txoffset'} = $dar1to5[0];  # txoffset is dar1 or dar[0]
+	delete $params{'dar1to5'};  # remove the dar1- 5 line from hash
+    } else {  # use a default value based on gate width (1/sampling rate)
+
+# Default values are 2000 Hz (setup.cw), 200 Hz (setup.cw5khz), 5000 (setup.cw62khz)
+	
+	if ($params{'gw'} == 200) {      # setup.cw5kHz
+	    $params{'txoffset'} = 200;   # set 5 kHz CW default to 200 Hz 
+	    print " WARNING:  txoffset not found in header, set to 200 Hz \n";
+	} elsif (($params{'gw'} == 16) || ($params{'gw'} == 20)) {  # setup.cw62khz
+	    $params{'txoffset'} = 5000;  # set 62.5 and 50 kHz CW default to 5000 Hz
+	    print " WARNING:  txoffset not in header, set to 5000 Hz \n";
+	} else {                         # assume setup.cw
+	    $params{'txoffset'} = 2000;  # set default (usually 12.5 kHz) to 2000 Hz
+	    print " WARNING:  txoffset not in header, set to 2000 Hz \n";
+	}
+    }
+
+# Get hopping information: first hop freq, freq step, dwell time
+# Note that these values exist even if data is unhopped
+
+    $test = &match_var($line, "dar6to10", 'dar6-10:(.{65})');
+    if ($test != 1) {  # no error
+	@dar6to10 = &dar_iar_car_values($params{'dar6to10'});  # divide into 5 values
+	$hopparams{'hopf1'} = $dar6to10[1];  # hopf1 is dar7 or dar[1]
+	$hopparams{'hopbw'} = $dar6to10[2];  # hopbw is dar8 or dar[2]
+	$hopparams{'dwell'} = $dar6to10[3];  # dwell is dar9 or dar[3]
+	delete $params{'dar6to10'};  # remove the dar6to10 line from hash
+    }
+
+# Get timing information:  txdownearly, rxsecnoise, caltm
+
+    $test = &match_var($line, "iar1to5", 'iar1- 5:(.{65})');
+    if ($test != 1) {  # no error
+	@iar1to5 = &dar_iar_car_values($params{'iar1to5'});  # divide into 5 values
+	$params{'rxsecnoise'} = $iar1to5[1];  # rxsecnoise is iar2 or iar[1] 
+	$params{'caltm'} = $iar1to5[2];       # caltm is iar3 or iar[2]
+	delete $params{'iar1to5'};  # remove iar1- 5 from hash
+    } else {  # if not found
+	$params{'rxsecnoise'} = 0.;  # default to no noise or cal at end of scan
+	$params{'caltm'} = 0.;
+    }
+
+# Get number of hops
+
+    $test = &match_var($line, "iar6to10", 'iar6-10:(.{65})');
+    if ($test != 1) {  # no error
+	@iar6to10 = &dar_iar_car_values($params{'iar6to10'});  # divide into 5 values
+	$hopparams{'nhops'} = $iar6to10[1];  # nhops is iar7 or iar[1]
+	delete $params{'iar6to10'};  # remove iar6-10 from hash
+    } else {
+	$hopparams{'nhops'} = 1;  # default to unhopped	
+    }
+
+# Get rxtime inserted from showriscans
+
+    $test = &match_var($line, "rxtime", 'rxtime\s+(\d+)');
+    if ($test == 1) { exit }  # bail if rxtime is not found
+
+# Do a final check for unhopped data
+
+    if (($hopparams{'nhops'} == 1) || ($hopparams{'nhops'} == 0)) {
+	$hopparams{'nhops'} = 1;  # can be 0 in headers for unhopped
+
+# Mike Nolan created a hop-like setup for unhopped CW where there is one
+#  absurdly long dwell with hopf1 = TX offset (used when the synthesizer
+#  that inserts the TX offset died); it is denoted by a dwell of 9999, 
+#  so if that is seen, use the first "hop" as the TX offset and otherwise
+#  use the unhopped processing!
+
+	if ($hopparams{'dwell'} == 9999) { $params{'txoffset'} = $hopparams{'hopf1'} }
+
+	$hopparams{'hopf1'} = 0;  # remove other hop info for unhopped data
+	$hopparams{'hopbw'} = 0;
+	$hopparams{'dwell'} = $params{'rxtime'};  # and use rxtime as dwell
+    }
+	    
+# Translate date from showriscans to pretty_date
+
+    use Date::Manip;
+    $olddate = $params{'Date'};
+    $date2 = ParseDate ($olddate);
+    $pretty_date = UnixDate ($date2, "%Y%b%d");
+    $params{'pretty_date'} = $pretty_date;
+    
+######
+# Can add more key,value pairs to %params as needed: add them here and below in $pstring
+######
+
+# Trim away leading and trailing blanks
+
+    for $key (keys %params) {
+	$params{$key} = &trim_str ($params{$key});
+    }
+
+    for $key (keys %hopparams) {
+	$hopparams{$key} = &trim_str ($hopparams{$key});
+    }
+	    
+# Write the values into a string
+
+    $ptitle = "";
+    $pstring = "";
+
+# Sort keys ~alphabetically to avoid issues with "random" ordering depending on which
+#  version of perl is being used
+    
+    for $key (sort keys %params) {
+	$padded = ' ' x (1) . $key;
+	$ptitle = $ptitle . "  " . $padded;
+	$padded = ' ' x (4) . $params{$key};
+	$pstring = $pstring . " " . $padded;
+    }
+    
+# Scan number was not part of the hash so add it here
+
+    $ptitle = "Scan" . "    " . $ptitle;
+    $pstring = $sno . " " . $pstring;
+
+    $hopptitle = "";
+    $hoppstring = "";
+
+    for $key (sort keys %hopparams) {
+	$padded = ' ' x (5) . $key;
+	$hopptitle = $hopptitle . "  " . $padded;
+	$padded = ' ' x (3) . $hopparams{$key};
+	$hoppstring = $hoppstring . " " . $padded;
+    }
+
+# Scan number was not part of the hash so add it here
+
+    $hopptitle = "Scan" . " " . $hopptitle;
+    $hoppstring = $sno . " " . $hoppstring;
+
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub match_var {
+
+# match_var searches ascii headers for a parameter, returns error if not found
+# Usage:  $value = &match_var ($line, $keyword, $pattern);
+#         e.g., $params{'rxtime'} = &match_var ($line,"rxtime",'rxtime\s+(\d+)');
+#               will match part of a string with rxtime followed by some number
+#               of spaces and digits and keep the digits due to parentheses
+	
+    my ($line, $keyword, $pattern) = @_;
+    my $err = 0;
+
+    if ($line =~ /$pattern/) {	    # if line matches pattern
+	$params{"$keyword"} = $1;   # store parameter in parentheses in hash
+    } else {
+	$params{"$keyword"} = "1";  # if not, store bogus value
+	print " WARNING: $keyword not found in header! \n";  # warn user
+	$err = 1;  # set error flag
+    }
+
+    return $err;  # return error flag where 0 is good and 1 is bad!
+
+}
+
+#________________________________________________________________________________
+
+sub trim_str {
+
+# trim_str removes trailing and leading blanks from a string
+# Usage:  $string = &trim_str ($string1);
+	
+    my $str = $_[0];
+    $str =~ s/\s*$//;  # trim trailing blanks and newline
+    $str =~ s/^\s*//;  # trim leading blanks
+    return $str;
+	
+}
+
+#________________________________________________________________________________
+
+sub dar_iar_car_values {
+
+# dar_iar_car_values divides strings of doubles, integers, or chars
+# Usage:  @arr = &dar_iar_car_values ($string_of_5_values_ascii);
+	
+    my $str = $_[0];
+    
+    $fmt = "(A13)*";  # repeat 13-character format until end of line
+    @arr = unpack($fmt, $str);  # unpack values into array
+    
+    return @arr;
+
+} 
+
+#________________________________________________________________________________
+
+sub fftparams {
+
+# fftparams determines parameters needed by the driver file for drv_cw.sc
+# Usage:   &fftparams ();
+# Input:   $rxtime,$gw
+# Output:  $res, $fftlen, $nfftave, $sample_rate, $nsampphop
+
+# Get number of samples per hop (hopped) or per scan (unhopped)
+#  and the appropriate number of records to utilize
+
+    $smppairipp = $params{'smpPairIpp'};  # samples per record
+    $gw = (10**(-6)) * $params{'gw'};     # translate usec to sec
+    $sample_rate = 1.0/$gw;               # sampling rate is reciprocal of gate width
+    $rxtime = $params{'rxtime'};          # rxtime includes both data and noise/cal
+
+    $rxmod = 0.;  # time used for rxsecnoise/caltm at end of each scan
+    if ($params{'caltm'} > 0.) {$rxmod = $params{'caltm'}}
+    if ($params{'rxsecnoise'} > $params{'caltm'}) {$rxmod = $params{'rxsecnoise'}}
+
+# drvcw* driver file accepts the first/last records to use from each scan
+# If rxsecnoise/caltm were used at the end of each scan, reduce last record
+# Instead of subtracting records, which can sometimes be off by +/- 1 record,
+#  subtract the rxsecnoise/caltm time, then convert to records and round up
+#  to the next full record (datafile only records full records)
+# Even if no rxsecnoise/caltm is used, round up to the next full record to
+#  account for the communication lag between the tick itself and RI stopping
+
+    $lastnoiserec = int($rxtime*$sample_rate/$smppairipp + 1);  # total records
+    $rxtime = $rxtime - $rxmod;     # actual time spent receiving signal
+    $firstrec = 1;                  # first record of scan
+    $lastrec = int($rxtime*$sample_rate/$smppairipp + 1);  # greatest integer record
+    $firstnoiserec = $lastrec + 1;  # first noise rec after data (if needed)
+
+# Set number of samples per hop (dwell or rxtime depending on hopping)
+
+    $nhops = $hopparams{'nhops'};
+    $dwell = $hopparams{'dwell'};
+    
+    if ($nhops != 1) {                      # hopped
+	$nsampphop = $sample_rate*$dwell;   # samples per hop
+    } else {                                # unhopped
+	$nsampphop = $sample_rate*$rxtime;  # number of samples per scan
+    }
+
+    print "\nCW data sampled at $sample_rate Hz with $nsampphop total samples: \n\n";
+	
+# Translate between frequency resolutions, FFT lengths, and FFTs to average
+
+    @resarray = qw(0.1 1.0 10.0);
+    $resmax = 1.0/($gw * $nsampphop);  # finest resolution possible
+    push @resarray, $resmax;
+
+    for ($j = 0; $j < @resarray-1; $j++) {
+	$res = $resarray[$j];                     # frequency resolution
+	$fftlenA[$j] =  1.0/($res * $gw);         # FFT lengthe necessary to achieve $res
+	$nfftaveA[$j] = $nsampphop/$fftlenA[$j];  # number of FFTs possible with $fftlenA
+    }
+
+    $fftlenA[@resarray-1] = $nsampphop;  # at max res, keep fftlen a round number
+    $nfftaveA[@resarray-1] = 1;          # at max res, $nfftave must be 1
+    
+# Print table of possible resolutions and FFT lengths
+
+    print "        Hz          fftlen         nfftave \n";
+    for ($j = 0; $j < @resarray; $j++) {
+	printf ("%10.4f \t%10d \t%10d \n", $resarray[$j], $fftlenA[$j], $nfftaveA[$j]);
+    }
+	    
+# Ask user for FFT length to use
+
+    $res = $resarray[@resarray-1];
+    $fftlen = $fftlenA[@resarray-1];
+    $nfftave = $nfftaveA[@resarray-1];
+
+    print "\nIf possible, choose an fftlen value that is a divisor of $nsampphop! \n";
+    printf ("\nDefault is finest resolution: \n%10.4f \t%10d \t%10d \n", $res,$fftlen,$nfftave);
+    print "Choose any fftlen or enter 0 to use the default value of finest resolution \n";
+
+    if (defined($opt_f)) {$fftflag = $opt_f} else {$fftflag = <STDIN>; chomp $fftflag}  # if no f flag, ask user
+    $fftflag = $fftflag + 0.;  # forces a value of zero in case no entry was made
+
+    if ($fftflag != "0") {  # if user chose FFT length of 0, use finest resolution possible
+	$fftlen = $fftflag;
+	$res = 1.0/($gw * $fftlen);
+	$nfftave = $nsampphop/$fftlen;
+    }
+
+    printf ("\nChoosing: \n%10.4f \t%10d \t%10d \n", $res,$fftlen,$nfftave);
+	    
+# Put the chosen parameters into the hash
+
+    $params{'res'} = $res;                  # frequency resolution
+    $params{'fftlen'} = $fftlen;            # FFT length
+    $params{'nfftave'} = $nfftave;          # number of FFTs (looks) to sum
+    $params{'sample_rate'} = $sample_rate;  # sampling rate
+    $params{'nsampphop'} = $nsampphop;      # number of samples per hop
+
+    print "\n======================================================================================== \n";
+    
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub filebase {
+
+# filebase sets up the filenames for the output files
+# Usage:   &filebase;
+# Input:   $srcNm, $date, $res, $suffix
+# Output:  $fbase
+	
+    $suffix = "cw";
+    $resstr = &trim_num ($res);	 # put resolution into a p string
+    $fbase = sprintf ("%s.%s.%sHz.%s", $params{'srcNm'}, $params{'pretty_date'}, $resstr, $suffix);
+    $drvfile = sprintf ("drvcw.%07.4fHz", $res);
+    $azelfile = "azel.input";
+    $fstem = sprintf ("%s_%s", $fbase, $fftlen);
+    $zfile = sprintf ("%s.azel", $fstem);
+    $redfile =  sprintf ("red_%s.pro", $fftlen);
+	
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub trim_num {
+
+# trim_num removes zeroes from a floating-point number
+# Usage:  $str = &trim_num ($res);
+	
+    my $res = $_[0];
+    $str = sprintf ("%07.4f", $res);
+    @arr = split (//, $str);		# divide into characters
+	
+# Start from right end and remove zeroes
+
+    $last = 6;
+
+    if ($arr[6] == 0) {
+	$last = 5;
+	if ($arr[5] == 0) {
+	    $last = 4;
+	    if ($arr[4] == 0) {
+		$last = 3;
+	    }
+	}
+    }
+	
+# Start from left end and remove zeroes
+
+    $first = 0;
+    if ($arr[0] == 0) {
+	$first = 1;
+	if ($arr[1] == 0) {
+	    $first = 2;
+	}
+    }
+	    
+    $arr[2] = 'p';  # the decimal point becomes p
+	
+# Concatenate into string
+
+    @newarr = @arr[$first..$last];
+    $str = "";
+    for $j (@newarr) {
+	$str = $str . $j;
+    }
+
+    return $str;
+
+}
+
+#________________________________________________________________________________
+
+sub drvcw_file {
+
+# drvcw_file produces the driver file for CW data reduction script drv_cw.sc
+# Usage:  &drvcw_file
+
+    $packing = $params{'Packing'};
+    $npol = $params{'npol'};
+    $fftlen = $params{'fftlen'};
+    $nfftave = $params{'nfftave'};
+    $rxsecnoise = $params{'rxsecnoise'};
+    $caltm = $params{'caltm'};
+	
+# Open drv_cw.sc driver file
+
+    open (DRV, ">$drvfile") || die "\n ERROR:  Could not open driver file for writing!";
+
+# Print parameters to drv_cw.sc driver file
+
+    print DRV  "#
+# Driver file for drv_cw.sc
+#  created by chris_craft
+#
+# input datafile
+#
+inpfile      $datafile
+#
+# base for filenames
+#
+fbase        $fbase
+#
+# bits per sample
+#
+bits         $packing
+#
+# number of polarizations
+#
+numpol       $npol
+#
+# FFT length
+#  frequency resolution = sampling_rate/fftlen
+#
+fftlen 	     $fftlen
+#
+# number of FFTs to combine
+#  fftlen*nfftave = # of samples per hop 
+#
+nfftave      $nfftave
+#
+# first and last record to use from datafile
+# necessary if rxsecnoise/caltm added to end of each scan
+#
+firstrec     $firstrec
+lastrec      $lastrec
+#";
+	
+# Close drv_cw.sc driver file and return
+
+    close (DRV);
+    print "Driver file for drv_cw.sc was written to $drvfile \n";
+    print "\n======================================================================================== \n";
+
+# Open drv_cw.sc driver file for noise (if needed)
+
+    if (($rxsecnoise > 0) || ($caltm > 0))
+    {
+
+	open (DRV, ">$drvfile.noise") || die "\n ERROR:  Could not open driver file for noise for writing!";
+
+	print DRV  "#
+# Driver file for drv_cw.sc
+#  created by chris_craft
+#
+# input datafile
+#
+inpfile      $datafile
+#
+# base for filenames
+#
+fbase        $fbase
+#
+# bits per sample
+#
+bits         $packing
+#
+# number of polarizations
+#
+numpol       $npol
+#
+# FFT length
+#  frequency resolution = sampling_rate/fftlen
+#
+fftlen 	     $fftlen
+#
+# number of FFTs to combine
+#  fftlen*nfftave = # of samples per hop 
+#
+nfftave      $nfftave
+#
+# first and last record to use from datafile
+# necessary if rxsecnoise/caltm added to end of each scan
+#
+firstrec     $firstnoiserec
+lastrec      $lastnoiserec
+#";
+	
+# Close drv_cw.sc driver file and return
+
+	close (DRV);
+	print "\nDriver file for drv_cw.sc for rxsecnoise/caltm was written to $drvfile.noise \n";
+	print "\n======================================================================================== \n";
+    }
+    
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub azel_file {
+
+# azel_file produces the input file for stripAzEl
+# Usage:  &azel_file
+
+# Example of stripAzEl input file
+
+#2003HM         # Target name (spaces OK)
+#0.33           # target diameter (km), use 1.0 if unknown
+#65             # target rotation period (hr), use 1.0 if unknown
+#0 -1           # Define rotation phase by giving a phase and the corresponding Julian date
+#5000           # sample rate (Hz)
+#0.126          # wavelength (m), 0.126
+#1 0            # nhops, first hop, 1 0
+#50             # hop dwell (sec)
+#150            # TX offset (Hz)
+#0 0            # freq step, first freq offset (Hz)
+#6 10           # First, last scan to process (numbered from 1)
+#931            # Scan 6 TX power (kW)
+#931            # Scan 7 TX power (kW)
+#931            # Scan 8 TX power (kW)
+#931            # Scan 9 TX power (kW)
+#931            # Scan 10 TX power (kW)
+#1              # Specify Tsys function here (0) or use Aug. 2000 fit (1)
+#0	 	# number of intervals to avoid
+
+# Convert variable names for insertion within single quotes
+
+    $nhops = $hopparams{'nhops'};
+    $dwell = $hopparams{'dwell'};
+    $txoffset = $params{'txoffset'};
+    $hopbw = $hopparams{'hopbw'};
+    $hopf1 = $hopparams{'hopf1'};
+
+# Open stripAzEl input file
+
+    open (AZEL, ">$azelfile") || die "\n ERROR:  Could not open azel file for writing! \n";
+
+# Print parameters to stripAzEl input file
+
+    print AZEL  "$params{'srcNm'}\n";
+    if (defined($opt_d)) {print AZEL "$opt_d\n"} else {print AZEL "1.0\n"};  # diameter in km
+    if (defined($opt_P)) {print AZEL "$opt_P\n"} else {print AZEL "1.0\n"};  # period in hr
+    print AZEL  "0 -1
+$sample_rate
+0.1259632
+$nhops 0
+$dwell
+$txoffset
+$hopbw $hopf1
+1 $numscans
+";
+
+    for ($j = 0; $j < $numscans;$j++) {
+	print AZEL "$txpower[$j]\n";  # print one transmitter power per line (scan)
+    }
+
+    print AZEL "1
+0
+";
+
+# Close stripAzEl input file and return
+
+    close (AZEL);
+    print "\nDriver file for stripAzEl was written to $azelfile \n";
+
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub red_file {
+
+# red_file produces the IDL reduction script
+# Usage:  &red_file
+
+# Convert variable names for insertion within single quotes
+
+    $sample_rate = $params{'sample_rate'};
+    $txoffset = $params{'txoffset'};
+    $rxtime = $params{'rxtime'};
+    $fftlen = $params{'fftlen'};
+    $srcNm = $params{'srcNm'};
+    $dwell = $hopparams{'dwell'};
+    $nhops = $hopparams{'nhops'};
+    $hopbw = $hopparams{'hopbw'};
+    $hopf1 = $hopparams{'hopf1'};
+	
+# Create stem for RDF spectra file names
+
+    $rdfstem = sprintf ("%s.%s.%sHz", $params{'srcNm'}, $params{'pretty_date'}, $resstr);
+
+# Collect source name and change to printable form
+	
+	if ($srcNm =~ /^([0-9]{4})((?i)[a-z]{2})([0-9]{0,3})$/)  # catches names of form yyyyAA### with 0-3 numbers at end
+	{
+	    $plotname = $1 . " " . $2 . "!D" . $3 . "!N,";  # takes 2008SV11 to 2008 SV!D11!N, for plot title
+	} elsif ($srcNm =~ "^([0-9]{1,6})[ ]{0,1}((?i)[a-z0-9]*)") {  # catches names made of numbers then a word (w/ or w/o a space)
+	    $plotname = $1 .  " " . $2 . ",";  # takes 1Ceres to 1 Ceres, for plot title
+	} elsif ($srcNm =~ "No_srcNm")
+	{
+	    $plotname = "<Enter Object>,";  # if source name not found, make it obvious
+	} else { 
+	    $plotname = $srcNm . ",";  # some weird user-given name, just keep it that way for latex table
+	}
+	
+# Collect the date of observations and change to printable form
+	
+	if ($params{'pretty_date'} =~ /^([0-9]{4})((?i)[a-z]{3})([0-9]{2})$/)  # catches date of form yyyyMmmdd
+	{
+	    $plotdate = $1 . " " . $2 . " " . $3;
+	}
+
+# Open IDL reduction file	
+
+    open (RED, ">$redfile") || die "\n ERROR:  Could not open IDL reduction file for writing! \n";
+
+# Print IDL commands to reduction file
+
+#  prior to 1999 JD6 (2010 July 27 AST), txoffset = 250 or sometimes other values
+#  during the 1999 JD6 observations, we changed txoffset = 150  (2010 Jul 27 uses it)
+#  during the Heracles observations, we changed txoffset = 2000 (2011 Dec 13 uses it)
+
+    if ($hopparams{'nhops'} == 1) {  # unhopped
+	
+	print RED ";
+; IDL reduction script for CW data created by chris_craft
+;
+
+; suppress gratuitous screen output and extend IDL path to find relevant procedures
+
+!Quiet = 1
+";
+	if (defined ($AOIDLPATH)) {
+	    print RED "
+!path = expand_path('+$AOIDLPATH')+':'+!path
+";
+        }
+	print RED "
+
+; use the following to look at pointing and raw received power during observations
+
+\@phil
+\@rirawinit
+\@lrinit 
+\@agcinit
+\@tdinit
+ripower, datafile='$datafile', /records, /plotfile, /outfile;, /help
+pointing, datafile='$datafile', /plotfile, /outfile;, /help
+
+; start reduction procedure
+
+@";
+	if (defined($ADIDLPATH)) {
+	    print RED "${AOIDLPATH}/";
+	}
+	print RED "cwinit
+setup, /reset
+setup, 'tzcorr', 4L
+setup, 'srate', ${sample_rate}L
+setup, 'nhops', ${nhops}L
+setup, 'hop1', 0L
+setup, 'hopbw', ${hopbw}L
+setup, 'hopf1', ${hopf1}L
+setup, 'txoff', $txoffset
+setup, 'dwell', ${rxtime}L
+setup, 'nblock', 1L
+setup, 'npts', ${fftlen}L
+";
+	printf RED ("setup, 'fstem', '%s'\n", $fstem);
+	printf RED ("setup, 'zfile', '%s'\n", $zfile);
+	print RED "
+; start the reduction process
+; vignette the spectra to a manageable size
+; set initial signal limits for location of echo
+
+nohop_start
+";
+	if ($sample_rate == 62500) {print RED "vignette, 1, 4000, /stack\n"} else {print RED "vignette, 1, 1000, /stack\n"}
+	print RED "siglim, 1, 10, /stack ; overrides chris_craft -d and -P flags
+nstack = getnstack()
+
+; do the final reduction step including baselining and scaling
+; default to third-order polynomial baseline fit (nohop_finish, 3)
+; prior to running nohop_finish, can examine baseline with, e.g.:
+
+;blinecheck, degree=3;, /outfile, /plotfile, /nopause;, /help
+
+";
+
+# Omit noise spikes from baseline noise computation (+/- 300 Hz from DC)
+#  txoffsets used = 150, 200, 250, 280, 300, 330, 500, 4000, 5000, 10000
+
+	if ($txoffset == 150) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-452,-448],[-392,-388],[-332,-328],[-272,-268],[-212,-208],[-152,-148],[-92,-88],[-32,-28],[28,32],[88,92],[148,152]] & push\n";
+	} elsif ($txoffset == 200) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-502,-498],[-442,-438],[-382,-378],[-322,-318],[-262,-258],[-202,-198],[-142,-138],[-82,-78],[-22,-18],[38,42],[98,102]] & push\n";
+	} elsif ($txoffset == 250) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-552,-548],[-492,-488],[-432,-428],[-372,-368],[-312,-308],[-252,-248],[-192,-188],[-132,-128],[-72,-68],[-12,-8],[48,52]] & push\n";
+	} elsif ($txoffset == 280) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-582,-578],[-522,-518],[-462,-458],[-402,-398],[-342,-338],[-282,-278],[-222,-218],[-162,-158],[-102,-98],[-42,-38],[18,22]] & push\n";
+	} elsif ($txoffset == 300) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-602,-598],[-542,-538],[-482,-478],[-422,-418],[-362,-358],[-302,-298],[-242,-238],[-182,-178],[-122,-118],[-62,-58],[-2,2]] & push\n";
+	} elsif ($txoffset == 330) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-632,-628],[-572,-568],[-512,-508],[-452,-448],[-392,-388],[-332,-328],[-272,-268],[-212,-208],[-152,-148],[-92,-88],[-32,-28]] & push\n";
+	} elsif ($txoffset == 500) {
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-802,-798],[-742,-738],[-682,-678],[-622,-618],[-562,-558],[-502,-498],[-442,-438],[-382,-378],[-322,-318],[-262,-258],[-202,-198]] & push\n";
+	} elsif ($txoffset == 0) {  # for no TX offset (often due to technical error)
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3, omitf=[[-302,-298],[-242,-238],[-182,-178],[-122,-118],[-62,-58],[-2,2],[58,62],[118,122],[178,182],[238,242],[298,302]] & push\n";
+	} else {  # 2, 4, 5, or 10 kHz offset, vignetting already removed DC/60-Hz noise region
+	    print RED "for n=1L, nstack do begin load, n & nohop_finish, 3 & push\n";
+	}
+	
+	print RED 
+"deletestack, first=1, last=nstack
+
+; examine individual scans or subgroups if desired and write stack to RDF
+
+;for n=1L, nstack do begin load, n & print, 'Scan = ', strtrim(string(n, format='(I)'), 1) & plotsum, maxf=20 & pause
+;plotgsum, 3, title='$plotname $plotdate';, /help
+
+writestackrdf, '$rdfstem', /overwrite
+";
+	
+	$smoothstem = sprintf ("%s.%s.s%sHz", $params{'srcNm'}, $params{'pretty_date'}, '1p0');
+	
+# Only add these lines if there is more than 1 scan
+
+	if ($numscans > 1) {
+	    print RED "
+; perform weighted sum of the individual runs and write sum to RDF
+
+sumspec, /all
+deletestack, f=1, l=nstack
+vignette, 1, 100, /stack  ; keep symmetric for cmsumpretty
+writestackrdf, '$rdfstem.sum', /overwrite
+plotstem = '$rdfstem'  ; for plotting without smoothing
+plotfile = plotstem+'.sum'
+";
+	    $smoothfile = $smoothstem . ".sum";
+	} else {
+	    print RED "vignette, 1, 100, /stack  ; keep symmetric for cmsumpretty
+plotstem = '$rdfstem'
+plotfile = plotstem
+";
+	    $smoothfile = $smoothstem;
+	}
+	
+	print RED "
+; plot final CW spectra and display radar-reflection properties
+; can apply smoothing, write smoothed RDF, and adjust siglim for sigmamu
+
+load, 1
+;smoothf, 1, /gauss
+;plotstem = '$smoothstem'  ; for plotting with smoothing
+";
+	if ($numscans > 1) {
+	    print RED ";plotfile = plotstem+'.sum'";
+	} else {
+	    print RED ";plotfile = plotstem";
+	}
+	print RED "
+;writerdf, plotfile, /overwrite
+plotsum, maxf=20, title='$srcNm'
+;showbw, 2
+;siglim, 1, -10, 10, /stack  ; set to chosen bandwidth limits
+load, 1 ; must reload unsmoothed spectrum with siglim from stack before sigmamu
+sigmamu, bwsigma=2, /wide_err
+;cwcross, 1, maxf=20, psym=-4, /file, /siglim ; /siglim uses signal limits of loaded scan instead of cursor
+
+; optional overplotting procedure to highlight 60 Hz noise harmonics
+; only necessary if echo is expected within about 300 Hz of DC (0 Hz)
+; not necessary for txoffsets of, say, 2000 Hz
+
+;oplotnoise, $txoffset
+";
+	
+# Include optional plotting of smoothed spectra
+	
+	print RED "
+; optional plotting procedure for making pretty spectra as postscript
+; user must replace scoc=0.00 with output of sigmamu 
+; frequency range (second and third arguments) should be two to three 
+;  times the siglim range 
+; it is recommended to use at least IDL 8.x to get pretty plots
+; user may need to modify 'convert' command, e.g., -flatten prevents 
+;  a black background in output PNG with ImageMagick 6.5.4-7
+
+;cmsumpretty, plotfile, -30, 30, title='$plotname $plotdate', scoc=0.00, plotfile=plotstem+'.cw.ps';, /help
+;convertstring = 'convert -rotate 270 -flatten '+plotstem+'.cw.ps '+plotstem+'.cw.png'
+;spawn, convertstring
+";
+
+    } else {  # hopped
+	
+# To avoid DC, keep +/- half the hop bandwidth less 500 Hz
+#  e.g., 4500 Hz for 10 kHz hopwidths
+
+	$maxf = $hopbw/2.-500.;
+
+	print RED ";
+; IDL reduction script for CW data created by chris_craft
+;
+
+; suppress gratuitous screen output and extend IDL path to find relevant procedures
+
+!Quiet = 1
+!path = expand_path('+/home/ptaylor/idl')+':'+!path
+
+; use the following to look at pointing and raw received power during observations
+
+\@phil
+\@rirawinit
+\@lrinit
+\@agcinit
+\@tdinit
+ripower, datafile='$datafile', /records, /plotfile, /outfile;, /help
+pointing, datafile='$datafile', /plotfile, /outfile;, /help
+
+; start reduction procedure
+
+@~cmagri/idl/cwinit
+setup, /reset
+setup, 'tzcorr', 4L
+setup, 'srate', ${sample_rate}L
+setup, 'nhops', ${nhops}L
+setup, 'hop1', 0L
+setup, 'hopbw', $hopbw
+setup, 'hopf1', $hopf1
+setup, 'txoff', $txoffset
+setup, 'dwell', $dwell
+setup, 'nblock', 6L
+setup, 'npts', ${fftlen}L
+";
+	printf RED ("setup, 'fstem', '%s'\n", $fstem);
+	printf RED ("setup, 'zfile', '%s'\n", $zfile);
+	print RED "
+; dehop the spectra
+; vignette the spectra to the baselined region
+; set initial signal limits for location of echo
+
+dehop, maxf=$maxf ;, /plotfit ; excludes region around DC, assumes siglim from -d and -P flags
+vignette, 1, 2000, /stack
+;siglim, 1, 600, /stack ; overrides chris_craft -d and -P flags
+
+; after dehopping, note signal limits (>BW), bias (~0.00), and rms values (~1.00)
+
+nstack = getnstack()
+
+; examine individual scans or subgroups if desired and write stack to RDF
+
+;for n=1L, nstack do begin load, n & print, 'Scan = ', strtrim(string(n, format='(I)'), 1) & plotsum, maxf=600 & pause
+;plotgsum, 3, title='$plotname $plotdate';, /help
+
+writestackrdf, '$rdfstem', /overwrite
+";
+
+	$smoothstem = sprintf ("%s.%s.s%sHz", $params{'srcNm'}, $params{'pretty_date'}, '10');
+
+	if ($numscans > 1) {
+	    print RED "
+sumspec, /all
+deletestack, f=1, l=nstack
+writestackrdf, '$rdfstem.sum', /overwrite
+plotstem = '$rdfstem'  ; for plotting without smoothing
+plotfile = plotstem+'.sum'
+";
+	    $smoothfile = $smoothstem . ".sum";
+	} else {
+	    print RED "plotstem = '$rdfstem'  ; for plotting without smoothing
+plotfile = '$rdfstem'
+";
+	    $smoothfile = $smoothstem;
+	}
+	print RED "
+; plot final CW spectra and display radar-reflection properties
+; can apply smoothing, write smoothed RDF, and adjust siglim for sigmamu
+
+load, 1
+;smoothf, 10
+;plotstem = '$smoothstem'
+";
+	if ($numscans > 1) {
+	    print RED ";plotfile = plotstem+'.sum'";
+	} else {
+	    print RED ";plotfile = plotstem";
+	}
+	print RED "
+;writerdf, plotfile, /overwrite
+plotsum, maxf=600, title='$srcNm'
+;showbw, 2
+;siglim, 1, -100, 100, /stack ; set to chosen bandwidth limits
+load, 1 ; must reload unsmoothed spectrum with siglim from stack before sigmamu
+sigmamu, bwsigma=2
+;cwcross, 1, maxf=600, psym=-4, /file, /siglim ; /siglim uses signal limits of loaded scan instead of cursor
+
+; optional plotting procedure for making pretty spectra as postscript
+; user must replace scoc=0.00 with output of sigmamu 
+; frequency range (second and third arguments) should be two to three 
+;  times the siglim range 
+; it is recommended to use at least IDL 7.0 to get pretty plots
+; user may need to modify 'convert' command, e.g., -flatten prevents 
+;  a black background in output PNG with ImageMagick 6.5.4-7
+
+;cmsumpretty, plotfile, -300, 300, title='$plotname $plotdate', scoc=0.00, plotfile=plotstem+'.cw.ps'
+;convertstring = 'convert -rotate 270 -flatten '+plotstem+'.cw.ps '+plotstem+'.cw.png'
+;spawn, convertstring
+";
+    }
+	
+# Close IDL reduction file and return
+
+    close (RED);
+    print "\nReduction script for IDL was written to $redfile \n";
+
+    return;
+
+}
+
+#________________________________________________________________________________
+
+sub array_fill () {
+
+# array_fill sets n elements of array to $val.
+# Usage:  @array_0filled = &array_fill ($n, $val, @array);
+	
+    my ($num, $val, @arr) = @_;
+    my $ii;
+    
+    for ($ii = 0; $ii < $num; $ii++) {
+	$arr[$ii] = $val;
+    }
+	    
+    return @arr;
+
+}
+
+#________________________________________________________________________________
