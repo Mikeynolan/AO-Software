@@ -1,4 +1,5 @@
 #!/usr/bin/perl -w
+#
 #use Text::CSV;
 use Getopt::Std qw(getopts);
 use File::Spec;
@@ -11,17 +12,19 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h, $opt_L, $opt_O);
+our ($opt_t, $opt_h, $opt_L, $opt_O,$opt_S);
 our $tfh;
+my $obssysfile;
 
-getopts('O:t:L:h');
+getopts('O:t:L:hS:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwlabel -L bundlelid -O DOI [-t template] [-h] file.csv [file.csv ...]
+Usage: cwlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
     -L:  LID for bundle, to be prepended onto ite  LIDs (required)
     -O:  DOI (required)
     -t:  Use template as a template for the xml. Default is internal template
+    -S:  File to contain Observing System xml
     -h:  Print this message.
 EOT
  exit;
@@ -43,6 +46,9 @@ if($opt_L) {
 } else {
   die "Must provide bundle lid";
 }
+if($opt_S) {
+  $obssysfile = $opt_S;
+}
 foreach $file (@ARGV) {
  my %replace;
  $replace{'XXXBUNDLELID'} = $bundlelid;
@@ -51,7 +57,7 @@ foreach $file (@ARGV) {
  my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
  my $author = '';
  my $editor = '';
- my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark);
+ my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark,$obssysstring);
  my ($ncols,$version,$ttype,$rdffile,$xmlname);
  my $writepdsversion;
  my $btags = 0;
@@ -191,7 +197,8 @@ foreach $file (@ARGV) {
  $lcfile = lc $file;
  $lcstart = lc $start;
  ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
- $replace{'XXXOBSSYSTEM'} = obssys($bookmark);
+ $obssysstring = obssys($bookmark);
+ $replace{'XXXOBSSYSTEM'} = $obssysstring;
  $replace{'XXXTXPROPS'} = $txprops;
  $replace{'XXXTARGETPROPS'} = $targetprops;
  $replace{'XXXMORERADAR'} = $moreRadar;
@@ -209,6 +216,11 @@ foreach $file (@ARGV) {
   print $xfh $_;
  }
  close $xfh;
+ if (! -e $obssysfile) {
+   open ($xfh, "> $obssysfile") || die;
+   print $xfh $obssysstring;
+ close $xfh;
+ }
 
 } # While @ARGV
 
@@ -447,7 +459,7 @@ our $template3 = <<EOT;
     </Time_Coordinates>
     <Primary_Result_Summary>
       <purpose>Science</purpose>
-      <processing_level>Calibrated</processing_level>
+      <processing_level>Partially Processed</processing_level>
       <Science_Facets>
         <discipline_name>Small Bodies</discipline_name>
         <facet1>Physical Properties</facet1>
