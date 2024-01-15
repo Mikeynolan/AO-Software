@@ -1,0 +1,59 @@
+#!/bin/csh
+#
+# return yymmdd string as standard out for today or -y yesterday.
+#
+# yymmdd -y
+# -y option returns it for yesterday.
+#
+# example:
+#	 to generate a filename with the embedded date.
+#    set fname=IM'yymmdd'.dat
+#
+#set verbose
+set yest=0
+while ( $#argv > 0 ) 
+	if ( "$1" == "-y" ) set yest=1
+	shift argv
+end
+#
+set dat=`date "+%y %m %d"`
+set months  =(31 28 31 30 31 30 31 31 30 31 30 31)
+set monthslp=(31 29 31 30 31 30 31 31 30 31 30 31)
+set year=$dat[1]
+set mon=$dat[2]
+set day=$dat[3]
+#
+# they want yesterday...
+#
+if ( $yest == 1) then 
+#
+# now try and figure out what was yesterdays y,m,d.. will not work for
+# jan 1 of 2000 (past) or mar 1 of 2000.. past
+#
+@ day = $day - 1
+@ mon= $mon
+@ year= $year
+if ( $day <= 0 ) then
+@    mon= $mon - 1
+	if ( $mon < 1 ) then
+    	set mon=12
+@       year= $year - 1
+	endif
+@ 	lpYrTest= ( $year / 4 ) * 4  
+    if ( $lpYrTest == $year ) then 
+	   set day = $monthslp[$mon]
+    else 
+	   set day = $months[$mon]
+	endif
+endif
+if ( $year < 10 ) set year="0"$year
+if ( $mon  < 10 ) set mon="0"$mon
+if ( $day  < 10 ) set day="0"$day
+#echo "input:$dat[1] $dat[2] $dat[3]"
+#echo "out  :$year  $mon $daym1"
+endif
+set yymmdd=${year}${mon}${day}
+#
+# return yymmdd as standard out
+#
+echo "$yymmdd"
