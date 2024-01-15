@@ -37,7 +37,7 @@ writeapdsfile,pairpointer,outfile,chan=chan,_extra=_ext
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
+pro setpds,show=show,infile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
 
 common pdsBlock,pds
 
@@ -46,13 +46,13 @@ print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
 print, "       /reset changes all to the default"
 print, "       sets one or more required values for PDS. Names can be:"
-print, "       infile: OVERRIDE original rdf file in tags"
+print, "       infile: OVERRIDE original rdf file in tags (not recommended)"
 print, "       target: OVERRIDE target listed in tags."
 print, "       pname: Product Name. REQUIRED, no default."
 print, "       ttype: Target Type. Default: 'Asteroid'"
 print, "       author: author XOR editor is REQUIRED"
 print, "       editor: author XOR editor is REQUIRED"
-print, "       level: Product Processing Level, default is 'Calibrated'"
+print, "       level: Product Processing Level, default is 'Partially Processed'"
 print, "       facet: Science Search Facet, default='Tabulated,Physical Properties'"
 print, "       version: Product version. Default is '1.0'"
 print, "       waves: Wavelength range, default = 'Microwave'"
@@ -63,7 +63,14 @@ print, "                 'DSS14 TX;DSS14 RX'"
 print, "       You can clear a value by setting it to ''"
 endif
                
-if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Calibrated', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
+idlversion = float(!VERSION.release)
+minversion = 8.6
+if (idlversion lt minversion) then begin
+  print, "IDL version 8.6 or higher required for writepds"
+  return
+endif
+
+if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Partially Processed', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
 end
@@ -170,6 +177,14 @@ if n_params() lt 2 or keyword_set(help) then begin
   return
 endif
 
+idlversion = float(!VERSION.release)
+minversion =8.6
+if (idlversion lt minversion) then begin
+  print, 'IDL version 8.6 or higher required for writepds'
+  return
+endif
+
+
 ; pairpointter is a pointer to either the loaded pair or a stack entry. I *think* they look the same.
 ;pds is a structure containg the PDS keywords that aren't natively in the data
 
@@ -218,7 +233,7 @@ if isnull(pds.pname) then begin
   return
 end
 if isnull(pds.author) + isnull(pds.editor) ne 1 then begin
-  print, "Must have either an author or an editor"
+  print, "Must have either an author or an editor,but not both"
   return
 end
 ;
@@ -284,11 +299,11 @@ printf, lun, 'Creation Date,', nowstring,",", addcomma
 ;
 ; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
-units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1']
-unitslist=['Receive start: seconds from midnight [s]','Receive Stop: seconds from midnight [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies','Left channel of signal region','Right channel of signal region','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number','First hop offset [Hz]']
+units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1','kpts','obs']
+unitslist=['Receive start: seconds from midnight [s]','Receive Stop: seconds from midnight [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies','Left channel of signal region','Right channel of signal region','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number','First hop offset [Hz]','Number of frequency bins used in processing','DSN number of receive station']
 printf, lun, 'Tags,RDF Tags begin here,',addcomma
 ; Should allow override
-skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs','zepch','kpts']
+skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','zepch']
 tagnames = strlowcase(tag_names(tags[0]))
 for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
@@ -358,11 +373,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,",",A1)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e16.8,",",e16.8,",",e16.8,",",A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,",",a1)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(e16.8,",",e16.8,",",a1)'
   endfor
 endelse
 
@@ -901,13 +916,18 @@ function arf, number
 ;
 ;format reals the way I want them.
 ;integers should be spelled out up to more digits than G allows.
-if (abs(number) lt 1.e16) && (number eq long64(number)) then begin
+isfloat = (size(number,/type) eq 4)
+if (abs(number) lt (isfloat?1.e7:1.e16)) && (number eq long64(number)) then begin
   text = string(number, format='(i0)')
 endif else begin
-  text = string(number, format='(g0)')
+; Unfortunately, g gives different precision depending on whether
+; it does "f" or "e", so specify e to assure full precision of input file
+  if isfloat then fmt = '(e16.8)' else fmt='(e24.17)'
+  text = string(number, format=fmt)
 end
 if not strmatch(text,'*[0-9].[0-9]*') then begin
-; Fix each of the three things that could be missing.
+; Fix each of the three things that could be missing: decimal
+; point and at least one digit before and after it.
   if not strmatch(text, '*.*') then begin
    pos = strpos(text, 'e')
    if pos lt 0 then text = text + '.' else begin
