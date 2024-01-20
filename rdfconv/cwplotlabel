@@ -143,13 +143,13 @@ our $template3 = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <doi>XXXXDOIXXXX</doi>
+      <doi>XXXDOIXXX</doi>
       <description>XXXDESCRIPTION</description>
     </Citation_Information>
   </Identification_Area>
-  <Observation Area>
+  <Context_Area>
 XXXOBSSYS
-  </Observation Area>
+  </Context_Area>
   <Document>
     <document_name>XXXDOCNAME</document_name>
     <editor_list>XXXEDITOR</editor_list>

@@ -51,7 +51,6 @@ if($opt_S) {
 }
 foreach $file (@ARGV) {
  my %replace;
- $replace{'XXXBUNDLELID'} = $bundlelid;
  $replace{'XXXDOIXXX'} = $doi;
  open(my $fh, "< $file") || die;
  my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
@@ -177,7 +176,7 @@ foreach $file (@ARGV) {
       $targetprops .= "            <radar:transmitter_to_receiver_lighttime unit=\"s\">$rtt</radar:transmitter_to_receiver_lighttime>\n";
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1] * 1000;
-      $txprops .= "<radar:tx_power unit=\"W\">$txpwr</radar:tx_power>\n";
+      $txprops .= "            <radar:tx_power unit=\"W\">$txpwr</radar:tx_power>\n";
     } # case
    } # onheader
 # If we get here, and any of the counters are running, we should count them.
@@ -200,10 +199,13 @@ foreach $file (@ARGV) {
  $lcstart = lc $start;
  ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
  $obssysstring = obssys($bookmark);
+ # Need to fix up here as we will write separately
+ $obssysstring =~ s/XXXBUNDLELID/$bundlelid/g;
  $replace{'XXXOBSSYSTEM'} = $obssysstring;
  $replace{'XXXTXPROPS'} = $txprops;
- $replace{'XXXTARGETPROPS'} = $targetprops;
+ $replace{'XXXTRGETPROPS'} = $targetprops;
  $replace{'XXXMORERADAR'} = $moreRadar;
+ $replace{'XXXBUNDLELID'} = $bundlelid;
  
 # And do the replace on the template.
  my $regex = join "|", map { quotemeta } keys %replace;
@@ -218,11 +220,9 @@ foreach $file (@ARGV) {
   print $xfh $_;
  }
  close $xfh;
- if (! -e $obssysfile) {
-   open ($xfh, "> $obssysfile") || die;
-   print $xfh $obssysstring;
+ open ($xfh, "> $obssysfile") || die;
+ print $xfh $obssysstring;
  close $xfh;
- }
 
 } # While @ARGV
 
@@ -316,7 +316,7 @@ if ($ao) {
         <name>Arecibo Observatory</name>
         <type>Host</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:facility:observatory.arecibo</lid_reference>
+           <lid_reference>urn:nasa:pds:context:observatory:arecibo</lid_reference>
           <reference_type>is_facility</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -364,7 +364,7 @@ if ($gold) {
         <name>Goldstone Complex</name>
         <type>Host</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:facility:observatory.goldstone</lid_reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
           <reference_type>is_facility</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -400,7 +400,7 @@ if ($dss14rx) {
         <name>Goldstone Solar System Radar Transmitter</name>
         <type>Instrument</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.trans_x</lid_reference>
+           <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.trans_x</lid_reference>
           <reference_type>is_instrument</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -434,13 +434,13 @@ sub gettemplate {
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="http://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/03a3c74c4dd7a238fca0a080310838cc562729c0/1.19.0.0/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
  xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
  xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd
-                     http://pds.nasa.gov/pds4/radar/v1 http://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.xsd">
+                     http://pds.nasa.gov/pds4/radar/v1 https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/03a3c74c4dd7a238fca0a080310838cc562729c0/1.19.0.0/PDS4_RADAR_1J00_1000.xsd">
   <Identification_Area>
     <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
@@ -486,7 +486,7 @@ XXXOBSSYSTEM
 XXXMORERADAR          <radar:Transmitter_Properties>
 XXXTXPROPS          </radar:Transmitter_Properties>
           <radar:Target_Properties>
-XXXTARGETPROPS          </radar:Target_Properties>
+XXXTRGETPROPS          </radar:Target_Properties>
         </radar:Groundbased_Radar>
       </radar:Radar>
     </Discipline_Area>
@@ -501,14 +501,10 @@ XXXTARGETPROPS          </radar:Target_Properties>
       <local_identifier>TAGS</local_identifier>
       <offset unit="byte">XXXTOFFSET</offset>
       <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>The Tags are metadata describing each individual radar spectrum. They are separately stored for each polarization. They were originally stored as PDS type IEEE754MSBSingle, and are converted to a text format that attempts to preserve that precision, though with trailing zeroes after the decimal point removed. They are presented here as the tag name, the value for each polarization, and a short definition.</description>
       <records>XXXNTAGS</records>
       <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
       <field_delimiter>Comma</field_delimiter>
-      <description>The Tags are metadata describing each individual radar spectrum. They
-are separately stored for each polarization. They were originally stored as PDS type
-IEEE754MSBSingle, and are converted to a text format that attempts to preserve that
-precision, though with trailing zeroes after the decimal point removed. They are presented
-here as the tag name, the value for each polarization, and a short definition.</description>
       <Record_Delimited>
         <fields>XXXNCOLS</fields>
         <groups>0</groups>
@@ -538,11 +534,10 @@ here as the tag name, the value for each polarization, and a short definition.</
       <local_identifier>EXTRA_TAGS</local_identifier>
       <offset unit="byte">XXXEOFFSET</offset>
       <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>Extra Tags are metadata associated with each pair of spectra. They are in user-defined, and so can in principle be anything, though the standard processing software defined a set of them. These were stored in the original files as text, and so can be arbitrary precision. They are presented as tagname,value,intended format,description. Descriptions are provided for fields generated by the standard reduction or as added by the user.</description>
       <records>XXXNEXTRA</records>
       <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
       <field_delimiter>Comma</field_delimiter>
-      <description>Extra Tags are metadata associated with each pair of spectra. They are in user-defined, and so can in principle be anything, though the standard processing software defined a set of them. These were stored in the original files as text, and so can be arbitrary precision. They are presented as tagname,value,intended format,description. Descriptions are provided for fields generated by the standard reduction or as added by the user.
-</description>
       <Record_Delimited>
         <fields>XXXNCOLS</fields>
         <groups>0</groups>
@@ -572,10 +567,10 @@ here as the tag name, the value for each polarization, and a short definition.</
       <local_identifier>DOPPLER_SPECTRUM</local_identifier>
       <offset unit="byte">XXXDOFFSET</offset>
       <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>Frequencies and echo power. Power is normalized to unit standard deviation.</description>
       <records>XXXNDATA</records>
       <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
       <field_delimiter>Comma</field_delimiter>
-      <description>Frequencies and echo power. Power is normalized to unit standard deviation.</description>
       <Record_Delimited>
         <fields>XXXNCOLS</fields>
         <groups>0</groups>
