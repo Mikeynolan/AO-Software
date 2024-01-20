@@ -4,7 +4,7 @@
 #Then use an rsync to get just the files you want. Here's the command if copying from arecibo. Note that you can sh this file to run it :).
 # excluding logs still not working
 
-rsync -azv --prune-empty-dirs --include='*/' --exclude=logs --include='*.csv' --include='*pdf' --include='*.xml' --exclude='*' 192.231.95.39::prstor0/radar/PDS .
+rsync -azv --prune-empty-dirs --exclude=logs/ --include='*/' --include='*.csv' --exclude='pnterr*' --include='*pdf' --include='*.xml' --exclude='*' 192.231.95.39::prstor0/radar/PDS .
 
 exit
 

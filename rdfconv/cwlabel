@@ -220,11 +220,9 @@ foreach $file (@ARGV) {
   print $xfh $_;
  }
  close $xfh;
- if (! -e $obssysfile) {
-   open ($xfh, "> $obssysfile") || die;
-   print $xfh $obssysstring;
+ open ($xfh, "> $obssysfile") || die;
+ print $xfh $obssysstring;
  close $xfh;
- }
 
 } # While @ARGV
 
@@ -318,7 +316,7 @@ if ($ao) {
         <name>Arecibo Observatory</name>
         <type>Host</type>
         <Internal_Reference>
-           <lid_reference>urn:nasa:pds:context:telescope:arecibo.305m</lid_reference>
+           <lid_reference>urn:nasa:pds:context:observatory:arecibo</lid_reference>
           <reference_type>is_facility</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -342,8 +340,7 @@ if ($aotx) {
         <name>Arecibo Planetary Radar Transmitter</name>
         <type>Instrument</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.trans_s</l
-id_reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.trans_s</lid_reference>
           <reference_type>is_instrument</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -355,8 +352,7 @@ if ($aorx) {
         <name>Arecibo 2380 MHz Radar Receiver</name>
         <type>Instrument</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</li
-d_reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
           <reference_type>is_instrument</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -368,8 +364,7 @@ if ($gold) {
         <name>Goldstone Complex</name>
         <type>Host</type>
         <Internal_Reference>
-          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</li
-d_reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
           <reference_type>is_facility</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
