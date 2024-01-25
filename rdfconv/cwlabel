@@ -526,7 +526,7 @@ XXXTRGETPROPS          </radar:Target_Properties>
         <Field_Delimited>
           <name>description</name>
           <data_type>UTF8_String</data_type>
-          <description>definition and inits in []</description>
+          <description>definition and units in []</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
