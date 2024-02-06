@@ -300,8 +300,8 @@ printf, lun, 'Creation Date,', nowstring,",", addcomma
 ; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
 units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1','kpts','obs']
-unitslist=['Receive start: seconds from midnight (zero-based) [s]','Receive Stop: seconds from midnight (zero-based) [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number (one-based)','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies (zero-based)','Left channel of signal region (zero-based)','Right channel of signal region (zero-based)','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number (zero-based)','First hop offset [Hz]','Number of frequency bins used in processing','DSN number of receive station']
-printf, lun, 'Tags,RDF Tags begin here,',addcomma
+unitslist=['Receive start: seconds from midnight (zero-based) [s]','Receive Stop: seconds from midnight (zero-based) [s]','Number of Fourier Transformss summed to create this spectrum','Elevation at receive midtime [deg]','Azimuth at receive midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number (one-based)','Group number','Fast Fourier Transform length','Voltage sampling interval before Fast Fourier Transform [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected Root Mean Square (RMS) of thermal background','Measured Root Mean Square of thermal background','Channel in which 0 frequency lies (zero-based)','Left channel of signal region (zero-based)','Right channel of signal region (zero-based)','Polarization: 1=Opposite Circular; 2=Same Circular','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','Transmit gain * Receive gain * 1.E-12 at receive midtime ','Scale factor to convert spectrum to Radar Cross Section [km^2]','Total Radar Cross Section [km^2]','Radar Cross Section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number (zero-based)','First hop offset [Hz]','Number of frequency bins used in processing','Deep Space Network (DSN) number of receive station']
+printf, lun, 'RDFTags,Radar Data Format Tags begin here,',addcomma
 ; Should allow override
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','zepch']
 tagnames = strlowcase(tag_names(tags[0]))
@@ -326,12 +326,12 @@ endfor
 ;
 ; and extra tags
 ;
-printf, lun, 'ExtraTags,RDF Extra Tags begin here,',addcomma
-printf, lun, 'file_date,', mt, ',s,Creation date of orginal rdf file', addcr
+printf, lun, 'RDFExtraTags,Radar Data Format Extra Tags begin here,',addcomma
+printf, lun, 'file_date,', mt, ',s,Creation date of orginal Radar Data Format file', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
 units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal','file_date','xmit_sta']
-unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence jd [d]','Receive start time [d]','Receive mean time [d]','Calendar RX midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthet range [au]','Min RA [h]','Mean RA [h]','Max RA [h]','Min Dec [deg]','Mean Dec [deg]','Max Dec [deg]','Name of original RDF file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if OK','Date this file was written','Transmit station']
+unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence Julain Day Number [d]','Receive start time [d]','Receive mean time [d]','Calendar receive midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthest range [au]','Minimum Right Ascension [h]','Mean Right Ascension [h]','Maximum Right Ascension [h]','Minimum Declination [deg]','Mean Declination [deg]','Maximum Declination [deg]','Name of original Radar Data Format (RDF) file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if acceptable','Date this file was written','Transmit station']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
