@@ -268,7 +268,7 @@ if err ne 0 then return
 ; Construct and print some PDS header strings
 printf, lun, '# Keywords,,',addcomma
 printf, lun, 'Product Name,',qq(pds.pname),",",addcomma
-printf, lun, 'Product Description,CW spectrum converted from RDF format',",",addcomma
+printf, lun, 'Product Description,CW spectrum converted from Radar Data Format (RDF)',",",addcomma
 printf, lun, 'Product Version,',qq(pds.version),",",addcomma
 printf, lun, 'Start Time,', startstring,",",addcomma
 printf, lun, 'Stop Time,', endstring,",", addcomma
@@ -300,7 +300,7 @@ printf, lun, 'Creation Date,', nowstring,",", addcomma
 ; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
 units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1','kpts','obs']
-unitslist=['Receive start: seconds from midnight [s]','Receive Stop: seconds from midnight [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies','Left channel of signal region','Right channel of signal region','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number','First hop offset [Hz]','Number of frequency bins used in processing','DSN number of receive station']
+unitslist=['Receive start: seconds from midnight (zero-based) [s]','Receive Stop: seconds from midnight (zero-based) [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number (one-based)','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies (zero-based)','Left channel of signal region (zero-based)','Right channel of signal region (zero-based)','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number (zero-based)','First hop offset [Hz]','Number of frequency bins used in processing','DSN number of receive station']
 printf, lun, 'Tags,RDF Tags begin here,',addcomma
 ; Should allow override
 skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','zepch']
