@@ -327,7 +327,8 @@ endfor
 ; and extra tags
 ;
 printf, lun, 'RDFExtraTags,Radar Data Format Extra Tags begin here,',addcomma
-printf, lun, 'file_date,', mt, ',s,Creation date of orginal Radar Data Format file', addcr
+; formatted avoids line wrap
+printf, format='(A,A,A,A)', lun, 'file_date,', mt, ',s,Creation date of orginal Radar Data Format file', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
 units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal','file_date','xmit_sta']
