@@ -434,13 +434,13 @@ sub gettemplate {
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/03a3c74c4dd7a238fca0a080310838cc562729c0/1.19.0.0/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/8bdd7c082ee229caa439378967760fe65a14b49f/1.19.0.0/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
  xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
  xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd
-                     http://pds.nasa.gov/pds4/radar/v1 https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/03a3c74c4dd7a238fca0a080310838cc562729c0/1.19.0.0/PDS4_RADAR_1J00_1000.xsd">
+                     http://pds.nasa.gov/pds4/radar/v1 https://raw.githubusercontent.com/pds-data-dictionaries/ldd-radar/development/build/development/8bdd7c082ee229caa439378967760fe65a14b49f/1.19.0.0/PDS4_RADAR_1J00_1000.xsd">
   <Identification_Area>
     <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>

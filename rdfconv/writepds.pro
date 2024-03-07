@@ -289,7 +289,7 @@ caldat, mt, mon,day,year,hh,mm,ss
 ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
 mt = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
 
-printf, lun, 'Software Version,20210411,',addcomma
+printf, lun, 'Software Version,20240206,',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)

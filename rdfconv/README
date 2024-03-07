@@ -24,14 +24,14 @@ collection_bundlename_document_inventory
 and leave the in the respective directory. move data/dates and data/targets to the top level and go there.
 
 Now it's
-collectlabel -d "Desc" -T "Arecibo Radar Doppler Spectra" -e "Nolan,M.C." -L gbo.ast.radar.arecibo.doppler_spectra_of_asteroids_v1.0 targets dates */collection_*csv
+collectlabel -d "Desc" -O 10.26033/j028-3a58 -T "Arecibo Radar Doppler Spectra" -e "Nolan,M.C." -L gbo.ast.radar.arecibo.doppler_spectra_of_asteroids targets dates */collection_*csv
 You can fill the description here or edit it later. That will make the collection_*.xls files and the bundle.xls file. 
 
 delete the dates and targets files. Hmm, it wouldn't be crazy to keep a targets file for the bundle.
 
 To get the standard doc files:
 cd doctemplates
-copydocs -L urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids_v1.0 -d descinationdocdrectory
+copydocs -L urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids -d descinationdocdrectory
 
 If you need to make more doc files:
 
