@@ -169,12 +169,13 @@ $AOBPATH = "";
 # 2022 May 17:  added 'sort' to hash commands to avoid seemingly random key/value order
 #                depending on perl version used (tested on perl v5.16.3 and v5.26.3)
 #
+use Time::Piece;
+use Getopt::Std;
 
 $| = 1;  # flush output; for debugging
 
 # Allow for option flags with associated values
 
-use Getopt::Std;
 getopts('d:f:hp:P:t:z');
 
 # Remind user about this program, current directory, datafile, and ephemeris file
@@ -766,10 +767,10 @@ sub chop_hdr {
 	    
 # Translate date from showriscans to pretty_date
 
-    use Date::Manip;
     $olddate = $params{'Date'};
-    $date2 = ParseDate ($olddate);
-    $pretty_date = UnixDate ($date2, "%Y%b%d");
+    my ($YR,$DOY) = ($olddate =~ /(\d{4})(\d{3})/);
+    my $tm = Time::Piece->strptime("$YR $DOY", "%Y %j");
+    $pretty_date = $tm->strftime("%Y%b%d");
     $params{'pretty_date'} = $pretty_date;
     
 ######
