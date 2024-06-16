@@ -135,7 +135,7 @@ for ifile = 0L, filecount-1 do begin
 
 ; First check for markers
     
-  markers=['^ *tags','^ *extra *tags','^ *# *column *definition','^ *# *data']
+  markers=['^ *rdftags','^ *rdfextratags','^ *# *column *definition','^ *# *data']
   wmark = lonarr(n_elements(markers))
   for i = 0, n_elements(markers)-1 do begin
     wmark[i] = where(stregex(csv.field1,markers[i], /bool, /fold) gt 0)

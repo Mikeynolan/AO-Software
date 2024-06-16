@@ -176,7 +176,7 @@ foreach $file (@ARGV) {
       $targetprops .= "            <radar:transmitter_to_receiver_lighttime unit=\"s\">$rtt</radar:transmitter_to_receiver_lighttime>\n";
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1] * 1000;
-      $txprops .= "            <radar:tx_power unit=\"W\">$txpwr</radar:tx_power>\n";
+      $txprops .= "            <radar:transmitter_power unit=\"W\">$txpwr</radar:transmitter_power>\n";
     } # case
    } # onheader
 # If we get here, and any of the counters are running, we should count them.
@@ -450,7 +450,6 @@ our $template3 = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <doi>XXXDOIXXX</doi>
       <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
     </Citation_Information>
   </Identification_Area>
@@ -471,7 +470,7 @@ our $template3 = <<EOT;
       <name>None</name>
       <type>Other Investigation</type>
       <Internal_Reference>
-        <lid_reference>urn:nasa:pds:context:investigation:individual.none</lid_reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>data_to_investigation</reference_type>
       </Internal_Reference>
     </Investigation_Area>
@@ -526,7 +525,7 @@ XXXTRGETPROPS          </radar:Target_Properties>
         <Field_Delimited>
           <name>description</name>
           <data_type>UTF8_String</data_type>
-          <description>definition and inits in []</description>
+          <description>definition and units in []</description>
         </Field_Delimited>
       </Record_Delimited>
     </Table_Delimited>
