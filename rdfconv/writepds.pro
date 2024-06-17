@@ -37,7 +37,7 @@ writeapdsfile,pairpointer,outfile,chan=chan,_extra=_ext
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-pro setpds,show=show,imfile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
+pro setpds,show=show,infile=infile,target=target,pname=pname,ttype=ttype,author=author,editor=editor,level=level,bookmark=bookmark,facet=facet,waves=waves,help=help,reset=reset
 
 common pdsBlock,pds
 
@@ -46,13 +46,13 @@ print, "setpds [,/show][,name='value']... [/help]"
 print, "       /show shows the values"
 print, "       /reset changes all to the default"
 print, "       sets one or more required values for PDS. Names can be:"
-print, "       infile: OVERRIDE original rdf file in tags"
+print, "       infile: OVERRIDE original rdf file in tags (not recommended)"
 print, "       target: OVERRIDE target listed in tags."
 print, "       pname: Product Name. REQUIRED, no default."
 print, "       ttype: Target Type. Default: 'Asteroid'"
 print, "       author: author XOR editor is REQUIRED"
 print, "       editor: author XOR editor is REQUIRED"
-print, "       level: Product Processing Level, default is 'Calibrated'"
+print, "       level: Product Processing Level, default is 'Partially Processed'"
 print, "       facet: Science Search Facet, default='Tabulated,Physical Properties'"
 print, "       version: Product version. Default is '1.0'"
 print, "       waves: Wavelength range, default = 'Microwave'"
@@ -63,7 +63,14 @@ print, "                 'DSS14 TX;DSS14 RX'"
 print, "       You can clear a value by setting it to ''"
 endif
                
-if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Calibrated', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
+idlversion = float(!VERSION.release)
+minversion = 8.6
+if (idlversion lt minversion) then begin
+  print, "IDL version 8.6 or higher required for writepds"
+  return
+endif
+
+if (n_tags(pds) eq 0) or keyword_set(reset) then pds = {infile: '', target:'', pname:'',ttype:'Asteroid', author:'', editor:'', level:'Partially Processed', bookmark:'',facet: 'Tabulated,Physical Properties', waves: 'Microwave', version: '1.0'}
 if keyword_set(arecibo) then begin
   pds.bookmark = 'AO TX;AO RX;AO RI'
 end
@@ -170,6 +177,14 @@ if n_params() lt 2 or keyword_set(help) then begin
   return
 endif
 
+idlversion = float(!VERSION.release)
+minversion =8.6
+if (idlversion lt minversion) then begin
+  print, 'IDL version 8.6 or higher required for writepds'
+  return
+endif
+
+
 ; pairpointter is a pointer to either the loaded pair or a stack entry. I *think* they look the same.
 ;pds is a structure containg the PDS keywords that aren't natively in the data
 
@@ -218,7 +233,7 @@ if isnull(pds.pname) then begin
   return
 end
 if isnull(pds.author) + isnull(pds.editor) ne 1 then begin
-  print, "Must have either an author or an editor"
+  print, "Must have either an author or an editor,but not both"
   return
 end
 ;
@@ -253,7 +268,7 @@ if err ne 0 then return
 ; Construct and print some PDS header strings
 printf, lun, '# Keywords,,',addcomma
 printf, lun, 'Product Name,',qq(pds.pname),",",addcomma
-printf, lun, 'Product Description,CW spectrum converted from RDF format',",",addcomma
+printf, lun, 'Product Description,CW spectrum converted from Radar Data Format (RDF)',",",addcomma
 printf, lun, 'Product Version,',qq(pds.version),",",addcomma
 printf, lun, 'Start Time,', startstring,",",addcomma
 printf, lun, 'Stop Time,', endstring,",", addcomma
@@ -274,7 +289,7 @@ caldat, mt, mon,day,year,hh,mm,ss
 ss = fix(ss + 0.5) ; round to nearest to avoid jd rounding
 mt = string(year,mon,day,hh,mm,ss, format="(I04,'-',I02,'-',I02,'T',I02,':',I02,':',I02,'Z')")
 
-printf, lun, 'Software Version,20210411,',addcomma
+printf, lun, 'Software Version,20240206,',addcomma
 
 caldat, systime(/utc,/julian), mon,dd,yy, hh,mm,ss
 ss = fix(ss + 0.5)
@@ -284,11 +299,11 @@ printf, lun, 'Creation Date,', nowstring,",", addcomma
 ;
 ; Now tags. To mark them, we'll have a fake tag called "Tags".
 ;
-units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1']
-unitslist=['Receive start: seconds from midnight [s]','Receive Stop: seconds from midnight [s]','Number of FFTs summed to create this spectrum','Elevation at rx midtime [deg]','Azimuth at rx midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number','Group number','FFT length','Voltage sampling interval before FFT [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected RMS of thermal background','Measured RMS of thermal background','Channel in which 0 frequency lies','Left channel of signal region','Right channel of signal region','Polarization: 1=OC; 2=SC','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','TX gain * RX gain * 1.E-12 at RX midtime ','Scale factor to convert spectrum to cross section [km^2]','Total cross section [km^2]','Cross section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number','First hop offset [Hz]']
-printf, lun, 'Tags,RDF Tags begin here,',addcomma
+units=['rcsta','rcend','nffts','elev','azim','rttim','doppl','phase','itar','irun','jgroup','lfft','igw','dfreq','tau','rmsc','rmsm','xjcen','jsnr1','jsnr2','jcp','trpwr','posfr','tsys','gain','sdev','cross','crerr','nfreq','frstep','color','freq1','kpts','obs']
+unitslist=['Receive start: seconds from midnight (zero-based) [s]','Receive Stop: seconds from midnight (zero-based) [s]','Number of Fourier Transformss summed to create this spectrum','Elevation at receive midtime [deg]','Azimuth at receive midtime [deg]','Two-way light time [s]','Doppler offset in unprocessed spectrum [Hz]','Rotation phase at jd0 [deg]','Target Sequence Number', 'Run number (one-based)','Group number','Fast Fourier Transform length','Voltage sampling interval before Fast Fourier Transform [us]','Frequency spacing of spectrum [Hz]','Total integration time [s]','Expected Root Mean Square (RMS) of thermal background','Measured Root Mean Square of thermal background','Channel in which 0 frequency lies (zero-based)','Left channel of signal region (zero-based)','Right channel of signal region (zero-based)','Polarization: 1=Opposite Circular; 2=Same Circular','Transmitter power at feed horn [kW]','1 if frequency axis is increasing; -1 if decreasing','Receiver system temperature [K]','Transmit gain * Receive gain * 1.E-12 at receive midtime ','Scale factor to convert spectrum to Radar Cross Section [km^2]','Total Radar Cross Section [km^2]','Radar Cross Section uncertainty [km^2]','Number of frequency hops if used','Frequency step if used [Hz]','Hop number (zero-based)','First hop offset [Hz]','Number of frequency bins used in processing','Deep Space Network (DSN) number of receive station']
+printf, lun, 'RDFTags,Radar Data Format Tags begin here,',addcomma
 ; Should allow override
-skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','obs','zepch','kpts']
+skiptags=['iyy','imm','idd','rchour','rcmin','rcsec','rcnsec','zepch']
 tagnames = strlowcase(tag_names(tags[0]))
 for i = 0, ntags-1 do begin
 dummy=where(strlowcase(tagnames[i]) eq skiptags, count)
@@ -311,12 +326,13 @@ endfor
 ;
 ; and extra tags
 ;
-printf, lun, 'ExtraTags,RDF Extra Tags begin here,',addcomma
-printf, lun, 'file_date,', mt, ',s,Creation date of orginal rdf file', addcr
+printf, lun, 'RDFExtraTags,Radar Data Format Extra Tags begin here,',addcomma
+; formatted avoids line wrap
+printf, format='(A,A,A,A)', lun, 'file_date,', mt, ',s,Creation date of orginal Radar Data Format file', addcr
 
 skipextra = ['xmit_poln','tzcorr','timezone']
 units = ['diameter','period','lambda','phase0','jd0','jdstart','jdmean','calmean','jdend','distmin','distmean','distmax','ramin','ramean','ramax','decmin','decmean','decmax','infile','perr','focusoff','badcal','file_date','xmit_sta']
-unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence jd [d]','Receive start time [d]','Receive mean time [d]','Calendar RX midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthet range [au]','Min RA [h]','Mean RA [h]','Max RA [h]','Min Dec [deg]','Mean Dec [deg]','Max Dec [deg]','Name of original RDF file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if OK','Date this file was written','Transmit station']
+unitslist=['Target diameter [km]','Rotation period [h]','Radar wavelength [m]','Rotation phase at jd0 [deg]','Refence Julain Day Number [d]','Receive start time [d]','Receive mean time [d]','Calendar receive midtime','Receive end time [d]','Closest range [au]','Mean range [au]','Farthest range [au]','Minimum Right Ascension [h]','Mean Right Ascension [h]','Maximum Right Ascension [h]','Minimum Declination [deg]','Mean Declination [deg]','Maximum Declination [deg]','Name of original Radar Data Format (RDF) file ','Pointing error [arcsec]','Focus Offset [m]','Calibration: 1 if bad; 0 if acceptable','Date this file was written','Transmit station']
 for i = 0, nextra-1 do begin
   if (isnull(extratags[i].name) or extratags[i].format eq 't') then continue ; skip tag names
   dummy = where(strlowcase(extratags[i].name) eq skipextra, count)
@@ -358,11 +374,11 @@ freq = posfr*dfreq*(dindgen(ndata) - xjcen)
 
 if threecol then begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e0,",",e0,",",e0,",",A1)'
+    printf, lun, freq[i],pair[0,i],pair[1,i],addcr, format='(e16.8,",",e16.8,",",e16.8,",",A1)'
   endfor
 endif else begin
   for i = 0L, ndata-1 do begin
-    printf, lun, freq[i],pair[0,i],addcr,format='(e0,",",e0,",",a1)'
+    printf, lun, freq[i],pair[0,i],addcr,format='(e16.8,",",e16.8,",",a1)'
   endfor
 endelse
 
@@ -901,13 +917,18 @@ function arf, number
 ;
 ;format reals the way I want them.
 ;integers should be spelled out up to more digits than G allows.
-if (abs(number) lt 1.e16) && (number eq long64(number)) then begin
+isfloat = (size(number,/type) eq 4)
+if (abs(number) lt (isfloat?1.e7:1.e16)) && (number eq long64(number)) then begin
   text = string(number, format='(i0)')
 endif else begin
-  text = string(number, format='(g0)')
+; Unfortunately, g gives different precision depending on whether
+; it does "f" or "e", so specify e to assure full precision of input file
+  if isfloat then fmt = '(e16.8)' else fmt='(e24.17)'
+  text = string(number, format=fmt)
 end
 if not strmatch(text,'*[0-9].[0-9]*') then begin
-; Fix each of the three things that could be missing.
+; Fix each of the three things that could be missing: decimal
+; point and at least one digit before and after it.
   if not strmatch(text, '*.*') then begin
    pos = strpos(text, 'e')
    if pos lt 0 then text = text + '.' else begin

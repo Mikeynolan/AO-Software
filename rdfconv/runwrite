@@ -7,7 +7,7 @@ $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n,$opt_l);
 
-my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra";
+my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids";
 my $doi = "10.26033/j028-3a58";
 getopts("nlh");
 
@@ -32,6 +32,7 @@ EOF
 $here = cwd();
 print "running runwrite in $here\n";
 my $datafile ="";
+my $obssysfile="${here}/obssys";
 
 $logfile = $ARGV[0];
 
@@ -70,8 +71,10 @@ if (! $opt_l) {
   open ($scrf, ">", "pdsscript.pro") || die;
 
   print $scrf <<EOF;
+\@phil
+\@rirawinit
 \@cwinit
-.r /home/nolan/idl/writepds
+.r /home/pirl/nolan/idl/writepds
 resetstack
 readrdf, '$rdffile'
 setpds, pname='${obj}_${pdate}_doppler_spectra'
@@ -85,15 +88,15 @@ endfor
 writestackpds, '$pdsfile', /over
 EOF
   close $scrf;
-
-  `idl86 < pdsscript.pro`;
+  `idl87 < pdsscript.pro`;
 }
-`cwlabel -L $bundlelid -O $doi *.csv`;
+`cwlabel -L $bundlelid -O $doi -S $obssysfile *.csv`;
 my $datanum = -1;
 my $docpath;
 if ($#prettyfile >= 0 && -e $prettyfile) {
    my @here = File::Spec->splitdir($here);
-   for (my $i = 0; $i <= $#here; $i++) {
+# data at the top level is not what we're looking for
+   for (my $i = 2; $i <= $#here; $i++) {
      if ($here[$i] eq "data")  {
        $datanum = $i;
        last;
@@ -115,7 +118,7 @@ if ($#prettyfile >= 0 && -e $prettyfile) {
     if ( ! $opt_l) {
       `mkdir -p $docpath; mv $newprettyfile $docpath/$newprettyfile`;
     }
-    `cd $docpath ; prettylabel -L $bundlelid -O $doi $docpath/$newprettyfile`;
+    `cd $docpath ; prettylabel -L $bundlelid -O $doi -S $obssysfile $docpath/$newprettyfile `;
   } else {
     print "Not in data tree, can't install prettyfile\n";
   }
