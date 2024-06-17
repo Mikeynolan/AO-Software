@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 use Time::Local;
-use Date::Manip;
+use Time::Piece;
 # use Time::gmtime;
 use POSIX;
 use Getopt::Std;
@@ -78,8 +78,8 @@ while (<DATA>) {
 	if($scan != $oldscan) {
 	    if($oldscan != 0) {
 		my ($Y,$D) = ($firstdate =~ /(\d{4})(\d{3})/);
-		my ($y,$m,$d,$h,$mn,$s) = Date_NthDayOfYear($1,$2);
-		my $datestring = sprintf("%04d-%02d-%02d", $y, $m, $d);
+		my $tp = Time::Piece->strptime("$Y $D", "%Y %j");
+		my $datestring = $tp->ymd;
 		print "Date:$datestring Time:", $opt_s ? $firsttime : sectotime($firsttime), "-", $opt_s ?
 		    $oldtime : sectotime($oldtime), " Scan:", $oldscan, " Recs:", $firstrec, "-", $oldrec, " Gw:", $oldgw, " Fifos:", $oldfifo, " Pack:", $oldpacking, "\n";
 	    } 
@@ -93,8 +93,8 @@ while (<DATA>) {
     }
 }
 my ($Y,$D) = ($firstdate =~ /(\d{4})(\d{3})/);
-my ($y,$m,$d,$h,$mn,$s) = Date_NthDayOfYear($1,$2);
-my $datestring = sprintf("%04d-%02d-%02d", $y, $m, $d);
+my $tp = Time::Piece->strptime("$Y $D", "%Y %j");
+my $datestring = $tp->ymd;
 print "Date:", $datestring, " Time:", $opt_s ? $firsttime : sectotime($firsttime), "-", $opt_s ? $oldtime : sectotime($oldtime), " Scan:", $oldscan, " Recs:", $firstrec,"-",$oldrec, " Gw:", $oldgw, " Fifos:", $oldfifo, " Pack:", $oldpacking, "\n";
 # You always need the last one...
 

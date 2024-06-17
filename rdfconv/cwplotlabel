@@ -14,19 +14,18 @@ my $file;
 our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_l, $opt_L, $opt_O,$opt_S);
 our $tfh;
 our ($title, $descr, $date, $year, $docname, $editor, $lid);
-our ($bundlelid,$doi,$obssys);
+our ($bundlelid,$obssys);
 
 getopts('T:t:e:d:D:I:hl:L:O:S:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l lid -O DOI [-I date] [-t template] [-D "Docname"] [-S obssysfile] [-h] file.pdf
+Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l lid [-I date] [-t template] [-D "Docname"] [-S obssysfile] [-h] file.pdf
     -T:  Set title (required)
     -d:  Set Description (required)
     -e:  Set editor *required* 
     -l:  Set lid. *required*
     -l:  Set bundle lid. *required*
-    -O:  DOI *required*
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
@@ -50,11 +49,6 @@ if ($opt_d) {
   $descr = $opt_d;
 } else {
   die "Description option is required";
-}
-if ($opt_O) {
-  $doi = $opt_O;
-} else {
-  die "DOI option is required";
 }
 if ($opt_I) {
   $date = $opt_I;
@@ -97,7 +91,6 @@ if ($opt_D) {
   $docname =~ s/([\w']+)/\u\L$1/;
 }
  $replace{'XXXPTITLE'} = $title;
- $replace{'XXXDOIXXX'} = $doi;
  my ($vol,$path,$fname) = File::Spec->splitpath($file);
  $replace{'XXXFILENAME'} = $fname;
  $replace{'XXXEDITOR'} = $editor;
@@ -143,13 +136,12 @@ our $template3 = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <doi>XXXXDOIXXXX</doi>
       <description>XXXDESCRIPTION</description>
     </Citation_Information>
   </Identification_Area>
-  <Observation Area>
+  <Context_Area>
 XXXOBSSYS
-  </Observation Area>
+  </Context_Area>
   <Document>
     <document_name>XXXDOCNAME</document_name>
     <editor_list>XXXEDITOR</editor_list>

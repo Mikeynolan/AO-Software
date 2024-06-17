@@ -48,11 +48,11 @@ def readcsvspec(files,calibrate=True):
         except IndexError:
             print("Couldn't find keywordstart marker in file %s." % i)
         try:    
-            tagsstart=d[ds[0].str.contains(r'(?i)Tags')].index.tolist()[0]+1
+            tagsstart=d[ds[0].str.contains(r'(?i)RDFTags')].index.tolist()[0]+1
         except IndexError:
             print("Couldn't find tags start marker in file %s." % i)
         try:
-            extrasstart=d[ds[0].str.contains(r'(?i)Extra *Tags')].index.tolist()[0]+1
+            extrasstart=d[ds[0].str.contains(r'(?i)ExtraTags')].index.tolist()[0]+1
         except IndexError:
             print("Couldn't find Extra Tags start marker in file %s." % i)
         try:

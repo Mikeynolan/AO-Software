@@ -12,7 +12,7 @@ import sys
 import argparse
 
 def main():
-    """Cnnvert PDS radar spectra to bare CSV
+    """Convert PDS radar spectra to bare CSV
 
     Read a series of PDS-format radar spectra (per-run csv) and generate 
     simple CSVs containing each spectrum and the sdev-weighted sum.
