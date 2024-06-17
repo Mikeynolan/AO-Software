@@ -1,0 +1,110 @@
+#!/usr/bin/perl -w
+use Time::Local;
+use Time::Piece;
+# use Time::gmtime;
+use POSIX;
+use Getopt::Std;
+use vars qw/ $opt_h $opt_f $opt_v $opt_s $opt_S $oldrecl $oldprgid $oldvers $oldipp /;
+
+getopts("hf:vsS");
+
+#Date:1998227    Time:31526   ExpNum:  1234  Scan:822727572 RecNum:    22
+
+#Marker:hdr_      PrgId:riraw     Vers: 2.0  HdrLen:172       RecLen: 60172
+#Date:1998227    Time:31526   ExpNum:  1234  Scan:822727572 RecNum:    12
+#grpNum:    12  grpRTot:    1  grpRCur:   1    Data:p       stScanTm:31526
+#posTm :31526019  azPos:3553661  grPos:134613 chPos: 88344
+#InputSec: 1000000       offset:  128     length:    44
+#smpMode :  ippGwCnt  extTiming:   no   SubCycle:   off  useMux: no
+#ippNum  :        23   ipps/buf:    2 smpPairIpp: 60000 Packing:  2  fifo:1
+#ipp     :   18000.0    startOn:    1         gw:   0.3 */
+
+if ($opt_f) {
+    open (DATA, "(stripVme -d -q < $opt_f | printhdrV) |");
+} elsif ($opt_h) {
+    printf STDERR "Usage: showriscans [-vhsS] [datafile]\nor\nshowriscans [-v -h] < datafile
+  -v verbose (show all scans)
+  -s time in sfm
+  -S print source name
+  -h show this message";
+} elsif ($#ARGV > -1) {
+    open (DATA, "(stripVme -d -q < $ARGV[0] | printhdrV) |");
+} elsif (-t STDIN) {
+    open (DATA, "(stripVme -d -q < /share/olda/datafile | printhdrV) |");
+} else {
+    open (DATA, "(stripVme -d -q |printhdrV) |");
+}
+
+
+$oldscan=0;
+$oldrec=0;
+$oldtime=0;
+$oldsrcnm = "";
+$firstdate=0;
+$firsttime=0;
+$firstrec=0;
+while (<DATA>) {
+    if ( (($ipp, $gw) = / *ipp *: *(\d*\.\d*).*gw: *(\d*\.\d*)/o)) {
+	$oldipp = $ipp;
+	$oldgw = $gw;
+    }
+    if ( ($srcnm) = /srcNm:(.*)id:/) {
+	$srcnm =~ s/\s+$//;
+	$srcnm =~ s/^\s+//;
+	if ($srcnm ne $oldsrcnm && $opt_S) {
+	    print "Source: $srcnm\n";
+	    $oldsrcnm = $srcnm;
+	}
+    }
+    if ( (($packing, $fifo) = /.*Packing: *(\d+) *fifo: *(\d+)/o)) {
+	$oldpacking = $packing;
+	$oldfifo = $fifo;
+    }
+    if ( (($prgid, $vers, $recl) = /.*PrgId:(\w+) *Vers: *(\d*\.\d*).*RecLen: *(\d+)/o)) {
+	$oldprgid = $prgid;
+	$oldvers = $vers;
+	$oldrecl = $recl;
+        if ($oldscan == 0) { print "Program: $prgid, Version: $vers, Reclen: $recl\n" } ;
+    }
+    if ( (($date, $time, $scan, $rec) = /Date: *(\d+) *Time: *(\d+) *ExpNum: *\d+ *Scan: *(\d+) *RecNum: *(\d+)/o)) {
+	if ( $oldrec + 1 != $rec ) {
+	    if ( $oldscan == $scan ) { # Make sure it's not just a normal one
+		printf STDERR "Missing record %d should be %d\n", $rec, $oldrec + 1;
+		$oldscan = -1 ; # print the chunk
+	    }
+	}
+	if ($opt_v) {print "Date:", $firstdate, " Time:", ($opt_s ? $firsttime : sectotime($firsttime)), "-", $opt_s ?
+			 $oldtime : sectotime($time), " Scan:", $scan, " Recs:", $firstrec, "-", $rec, " Gw:", $oldgw, " Fifos:", $oldfifo, " Pack:", $oldpacking, "\r";}
+	if($scan != $oldscan) {
+	    if($oldscan != 0) {
+		my ($Y,$D) = ($firstdate =~ /(\d{4})(\d{3})/);
+		my $tp = Time::Piece->strptime("$Y $D", "%Y %j");
+		my $datestring = $tp->ymd;
+		print "Date:$datestring Time:", $opt_s ? $firsttime : sectotime($firsttime), "-", $opt_s ?
+		    $oldtime : sectotime($oldtime), " Scan:", $oldscan, " Recs:", $firstrec, "-", $oldrec, " Gw:", $oldgw, " Fifos:", $oldfifo, " Pack:", $oldpacking, "\n";
+	    } 
+	    $firsttime=$time;
+	    $firstrec=$rec;
+	    $firstdate = $date;
+	}
+	$oldscan = $scan;
+	$oldrec = $rec;
+	$oldtime = $time;
+    }
+}
+my ($Y,$D) = ($firstdate =~ /(\d{4})(\d{3})/);
+my $tp = Time::Piece->strptime("$Y $D", "%Y %j");
+my $datestring = $tp->ymd;
+print "Date:", $datestring, " Time:", $opt_s ? $firsttime : sectotime($firsttime), "-", $opt_s ? $oldtime : sectotime($oldtime), " Scan:", $oldscan, " Recs:", $firstrec,"-",$oldrec, " Gw:", $oldgw, " Fifos:", $oldfifo, " Pack:", $oldpacking, "\n";
+# You always need the last one...
+
+sub sectotime {
+    
+    $secs = $_[0];
+    $hrs = int($secs / 3600);
+    $secs = $secs - $hrs * 3600;
+    $mins = int($secs / 60);
+    $secs = $secs - $mins * 60;
+    
+    return (sprintf "%2.2d:%2.2d:%2.2d", $hrs, $mins, $secs);
+}

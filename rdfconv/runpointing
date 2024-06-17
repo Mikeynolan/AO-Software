@@ -1,0 +1,56 @@
+#!/usr/bin/perl -w
+
+@mdays = (0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);
+#This may give multiple lines. No good way to decide, so just choose the
+# last matching one
+my @df = `grep datafile *log*`;
+my $df;
+foreach (@df) {
+  if (/(datafile\S+)/) {
+    $df = $1;
+  }
+}
+
+die "No datafile found in logfiles\n" unless defined($df);
+
+#Generate pointing file
+my $idlscript ="pointing, data='$df', /noplot, /out\n";
+`idl86 < $idlscript`;
+
+#find scans
+
+open ($fh, "<pointing_error.txt") || die;
+my $scans = 0;
+while (<$fh>) {
+  if (/#\s+Height/) {
+    $scans = 1;
+    next;
+  } elsif (/#\s+Available/) {
+    $scans = 0;
+    next;
+  } elsif (/^#/) {
+    next;
+  }
+  if ($scans) {
+    my ($scanno, $adate, $atime, $ftime, $terr, $herr, $xrot, $yrot, $hgt) = split(',');
+#utc
+    my ($year,$mon,$day) = split('-', $adate);
+    my ($hr,$mn,$sc) = split(':', $atime);
+    $hr += 4;
+    if ($hr > 23) {
+      $hr -= 24;
+      $day++;
+    }
+    if ($day > $mdays[$mon] || ($mon == 2 && $year % 4 != 0 && $day > 28)) {
+      $day = 1;
+      $mon++;
+    }
+    if ($mon > 12) {
+      $mon = 1;
+      $year++;
+    }
+    $isodate = sprintf("%04d-%02d-%02dT%02d:%02d:%02d", ${year},${mon},${day},${hr},${mn},${sc});
+    print "$isodate $terr $herr $hgt";
+  }
+}
+       

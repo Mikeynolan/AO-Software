@@ -1,0 +1,46 @@
+#!/usr/bin/perl -w
+#use Text::CSV;
+use Getopt::Std qw(getopts);
+use strict;
+use warnings;
+use POSIX;
+
+my $file;
+our ($opt_L,$opt_d);
+our $tfh;
+our ($lid, $dest);
+
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+
+sub main::HELP_MESSAGE {
+ print STDERR <<EOT;
+Usage: copydocs -L "Bundlelid" -d destination [files]
+         Copies the default docs updating the bundle lid
+    -d:  directory destination (required)
+    -L:  Set bundle LID (required)
+    -h:  Print this message.
+EOT
+ exit;
+}
+
+getopts('d:L:h');
+
+if ($opt_L) {
+  $lid=$opt_L;
+} else {
+  die "Bundle LID option is required";
+}
+if ($opt_d) {
+  $dest=$opt_d;
+} else {
+  die "destination option is required";
+}
+#if ($opt_V) {
+#$version = $opt_V;
+#} else {
+#$version = "V1.0";
+#}
+
+foreach (@ARGV) {
+   `sed -e "s/XXXBUNDLELID/$lid/" < $_ > $dest/$_`;
+}
