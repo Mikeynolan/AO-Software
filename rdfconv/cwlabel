@@ -97,14 +97,14 @@ foreach $file (@ARGV) {
     }
     $replace{'XXXNCOLS'} = $ncols;
     next;
-   } elsif (/^Tags/) {
+   } elsif (/^RDFTags/) {
     $btags = $tell;
     $replace{'XXXTOFFSET'} = $btags;
     $ontags = 1;
     $onextra = 0;
     $ondata = 0;
     next;
-   } elsif (/^Extra/) {
+   } elsif (/^RDFExtra/) {
     $bextra = $tell;
     $replace{'XXXEOFFSET'} = $bextra;
     $onextra = 1;
@@ -316,7 +316,7 @@ if ($ao) {
         <name>Arecibo Observatory</name>
         <type>Host</type>
         <Internal_Reference>
-           <lid_reference>urn:nasa:pds:context:observatory:arecibo</lid_reference>
+           <lid_reference>urn:nasa:pds:context:facility:observatory.arecibo</lid_reference>
           <reference_type>is_facility</reference_type>
         </Internal_Reference>
       </Observing_System_Component>
@@ -482,8 +482,8 @@ XXXOBSSYSTEM
     <Discipline_Area>
       <radar:Radar>
         <radar:Groundbased_Radar>
-XXXMORERADAR          <radar:Transmitter_Properties>
-XXXTXPROPS          </radar:Transmitter_Properties>
+XXXMORERADAR          <radar:Transmission_Properties>
+XXXTXPROPS          </radar:Transmission_Properties>
           <radar:Target_Properties>
 XXXTRGETPROPS          </radar:Target_Properties>
         </radar:Groundbased_Radar>
