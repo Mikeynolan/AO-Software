@@ -1,0 +1,18 @@
+set -e 
+set -x
+
+PDF_FILE="$1"
+BASE_FILE=`echo "${PDF_FILE}" | sed -e 's/.pdf$|.ps$//'`
+PDFA_FILE="${BASE_FILE}".pdfa.pdf
+PDFDEFS="/home/nolan/etc/PDFA_def.ps"
+
+VERAPDF_CMD=~/verapdf/verapdf
+
+gs -dPDFA=1 -dPDFACompatibilityPolicy=1 -dBATCH -dNOPAUSE -dNOOUTERSAVE -sDEVICE=pdfwrite -dNOSAFER -sColorConverionStrategy=/UseDeviceIndependentColor -sOutputFile=${PDFA_FILE} $PDFDEFS "${PDF_FILE}"
+
+if [ -e "$VERAPDF_CMD" ]; then
+    echo "Running verapdf..."
+    $VERAPDF_CMD --format text "${PDFA_FILE}"
+else
+    echo "verapdf not found. Your conversion probably succeeded, but it cannot be validated."
+fi

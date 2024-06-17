@@ -1,4 +1,5 @@
 #! /bin/tcsh -f
+set echo
 # new usage:
 # drv_cw.sc controlfile firstscan lastscan
 #
@@ -7,6 +8,9 @@
 #	..   
 #	process cw information.. input setup info from $DRVSBCW file
 # history:
+#
+# 19oct21   MCN adding in simple stokes processing. May be a sneaky way, but I'm
+#           just going to make temp files.
 #
 # 14aug19 - PJP copied version from /pkg/aosft/common/bin and then replaces
 #           keyval.sc< call with newer keyval.sc ..
@@ -53,7 +57,20 @@
 #
 #set verbose
 #
+
 set stem = "/pkg/aosoft/fedora4/x86_64/bin"
+set swapcmd='cat'
+set argv=`getopt "s" $*`
+set errcode = $?
+while (1)
+  switch ($1)
+    case -s:
+           set swapcmd="$stem/byteswap"; shift; breaksw
+    case --:
+           shift; break
+  endsw
+end
+   
 set parms=($*)              
 if ( $#parms == 0 || $#parms > 3 ) then
   echo "Usage: drv_cw.sc <control file> fstart fend"
@@ -76,6 +93,8 @@ set inpfile=`keyval.sc< $DRVSBCW inpfile`
 set bits=`keyval.sc< $DRVSBCW bits`
 set fftlen=`keyval.sc< $DRVSBCW fftlen`
 set numpol=`keyval.sc< $DRVSBCW numpol`
+set numchan = $numpol
+if ($numchan == 2) set numchan = 4 # Stokes
 set firstrec=`keyval.sc< $DRVSBCW firstrec`
 set lastrec=`keyval.sc< $DRVSBCW lastrec`
 set ignorefirst=`keyval.sc< $DRVSBCW ignorefirst`
@@ -154,8 +173,9 @@ echo "drv_cw.sc START       : `date`" >> $hdr
 #     
 #  
 #
+set tdir = `mktemp -d`
 set fifoToUse=1
-while ( $fifoToUse <= $numpol ) 
+while ( $fifoToUse <= $numchan ) 
   set outfile=${basefile}_${fftlen}.p${fifoToUse}
   if ( "$filesuffix" != "" ) then
     set outfile = ${outfile}.${filesuffix}
@@ -163,20 +183,39 @@ while ( $fifoToUse <= $numpol )
   rm -f $outfile
   set scannum = $fstart
   while ( $scannum <= $fend )
-    $stem/stripVme -h -o $scannum -n 1 -g "$firstrec $lastrec" < $inpfile |\
-    $stem/unpriV -b $bits -i $numpol -f $fifoToUse -d 3 |\
-    cat -s tmp$$ - |\
-    $stem/convdatatype -q -i i4 -o f4 |\
-    $stem/zerofill $nofillflag -b 8 -i $fftlen -o $fftlen |\
-    $stem/fftfilter -d f -n $fftlen -s $numskip |\
-    $stem/power_ao |\
-    $stem/avgdata -d r4 -g $fftlen -h $nfftave $ignore |\
-    $stem/rotate -i $fftlen -r $torotate >> $outfile
-    echo "Done with scan ${scannum}"
-    @ scannum++
+    set ff=$tdir/data.$scannum.p${fifoToUse}
+    switch ($fifoToUse)
+    case 1:
+    case 2:
+      $stem/stripVme -h -o $scannum -n 1 -g "$firstrec $lastrec" < $inpfile |\
+      $stem/unpriV -b $bits -i $numpol -f $fifoToUse -d 3 |\
+      cat -s tmp$$ - |\
+      $stem/convdatatype -q -i i4 -o f4 |\
+      $stem/zerofill $nofillflag -b 8 -i $fftlen -o $fftlen |\
+      $stem/fftfilter -d f -n $fftlen -s $numskip > $ff
+      $stem/power_ao < $ff |\
+      $stem/avgdata -d r4 -g $fftlen -h $nfftave $ignore |\
+      $stem/rotate -i $fftlen -r $torotate > $tdir/tmpout
+      $swapcmd $tdir/tmpout >> $outfile
+    breaksw
+    case 3:
+    case 4:
+      @ which = $fifoToUse - 2
+      set f1=$tdir/data.$scannum.p1
+      set f2=$tdir/data.$scannum.p2
+      $stem/stokes $f1 $f2  |\
+      $stem/selectpnts -f $which -s 2 |\
+      $stem/avgdata -d r4 -g $fftlen -h $nfftave $ignore |\
+      $stem/rotate -i $fftlen -r $torotate > $tdir/tmpout
+      $swapcmd $tdir/tmpout >> $outfile
+    endsw
+      echo "Done with scan ${scannum}"
+      @ scannum++
+    
   end
   @ fifoToUse= $fifoToUse + 1
 end
+/bin/rm -r $tdir
 #
 rm tmp$$
 #

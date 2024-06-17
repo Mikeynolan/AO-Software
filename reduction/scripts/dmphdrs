@@ -1,0 +1,91 @@
+#!/bin/csh
+#
+# dmphdrs -h -f filename -n no more program  -b -s searchString
+#  -h          ..print help and quit
+#  -b          ..if you hit a bad header search for new one
+#  -f filename .. to dump .. default datafile
+#  -n          .. no more programm
+#  -s string   .. search string to match in egrep for line to output
+#  -x          .. search string to match in egrep for line to output
+#
+# dump vme headers...
+# search string can be passed to egrep so "aaa|bbb" can be used
+#
+# set verbose
+set infile=datafile
+set usemore=1
+set search=""
+set type=0
+set bad=""
+set usage="Usage: dmphdrs -b -f filename -n noMoreProg -s search string"
+#
+#	parse any args
+#
+while ( "$1" != "" )
+# echo "$*"
+if ( "$1" == "-h" ) then
+echo "$usage"
+exit(1)
+else if ( "$1" == "-f" ) then 
+if ( "$2" == "") then
+echo "$usage"
+exit(1) 
+endif
+set infile="$2"
+shift
+shift
+else if ( "$1" == "-n" ) then
+set usemore=0
+shift
+else if ( "$1" == "-b" ) then
+set bad="-b"
+shift
+else if ( "$1" == "-s" ) then
+set search="$2"
+shift
+shift
+else 
+echo "$usage"
+exit(1);
+endif
+end
+###
+if ( "$usemore" == "0" ) then
+@ type= $type + 1
+endif
+if ( "$search" != "" ) then
+@ type= $type + 10
+endif
+#
+#	execute commandd... how to use eval to do it???
+#
+switch ( "$type" ) 
+#
+#  no search,  more
+#
+  case "0":
+       stripVme -d $bad < $infile|printhdrV|more
+	   breaksw 
+#
+# no more, no search
+#
+  case "1":
+       stripVme -d $bad < $infile|printhdrV
+	   breaksw 
+#
+# search, more
+#
+  case "10":
+	   echo "search:$search"
+       stripVme -d $bad < $infile|printhdrV|egrep "($search)"|more
+	   breaksw 
+#
+# search, no more
+#
+  case "11":
+	   echo "search:$search"
+       stripVme -d $bad < $infile|printhdrV|egrep "($search)"
+	   breaksw 
+  default:
+	   echo "$usage"
+endsw
