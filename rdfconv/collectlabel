@@ -143,23 +143,23 @@ my $rx = 0;
 my $aori = 0;
 my $pfs = 0;
 
-if(grep (/urn:.*observatory.arecibo/, @daturns)) {$ao=1;}
-if(grep (/urn:.*:telescope:arecibo.305m/, @daturns)) {$ao305=1;}
-if(grep (/urn:.*instrument:arecibo.305m.trans_s/, @daturns)) {
+if(grep (/urn:.*observatory.arecibo/, @docurns)) {$ao=1;}
+if(grep (/urn:.*:arecibo.305m:/, @docurns)) {$ao305=1;}
+if(grep (/urn:.*:arecibo.305m.trans_s:/, @docurns)) {
   $aotx=1;
   $tx = -1;
 }
-if(grep (/urn:.*instrument:arecibo.305m.recv_s/, @daturns)) {
+if(grep (/urn:.*:arecibo.305m.recv_s:/, @docurns)) {
   $aorx=1;
   $rx = -1;
 }
-if(grep (/urn:.*observatory.goldstone/, @daturns)) {$gold=1;}
-if(grep (/urn:.*telescope:goldstone.dss14_70m/, @daturns)) {$dss14=1;}
-if(grep (/urn.*:instrument:goldstone.dss14_70m.recv_x/, @daturns)) {
+if(grep (/urn:.*observatory.goldstone/, @docurns)) {$gold=1;}
+if(grep (/urn:.*:goldstone.dss14_70m:/, @docurns)) {$dss14=1;}
+if(grep (/urn.*:goldstone.dss14_70m.recv_x:/, @docurns)) {
   $dss14rx=1;
   $tx = -14;
 }
-if(grep (/urn:.*instrument:goldstone.dss14_70m.trans_x/, @daturns)) {
+if(grep (/urn:.*:goldstone.dss14_70m.trans_x:/, @docurns)) {
   $dss14tx=1;
   $tx = -14;
 }
