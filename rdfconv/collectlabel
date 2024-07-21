@@ -423,7 +423,6 @@ XXXTARGETSXXX
   </Context_Area>
   <Bundle>
     <bundle_type>Archive</bundle_type>
-    <description>-</description>
   </Bundle>
   <Bundle_Member_Entry>
     <lidvid_reference>urn:nasa:pds:XXXLIDXXX:document::1.0</lidvid_reference>
@@ -458,8 +457,7 @@ our $templatec = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
-      <doi>XXXDOIXXX</doi>
-      <description>-</description>
+      <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
