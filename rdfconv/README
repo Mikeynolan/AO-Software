@@ -9,9 +9,11 @@ rsync -azv --prune-empty-dirs --exclude=logs/ --include='*/' --include='*.csv' -
 exit
 
 
-Need to get the info for the bundle. There's a set of templates in doctemplates. May need some editing mainly for the description, AA_whatever, and maybe references. Copy them to the document directory: They need to be in the inventory. THere's a copydocs command that updates the xml with the lid
+Need to get the info for the bundle. There''s a set of templates in doctemplates. May need some editing mainly for the description, AA_whatever, and maybe references. Copy them to the document directory: They need to be in the inventory. THere''s a copydocs command that updates the xml with the lid
 
-If you're doing a subset, do that again with another rsync.
+Note that it also uses thes to decide which context onjects to include in the xml, which is a kluge.
+
+If you''re doing a subset, do that again with another rsync.
 
 go to each of the data and document directories and:
 
@@ -24,14 +26,14 @@ collection_bundlename_document_inventory
 and leave the in the respective directory. move data/dates and data/targets to the top level and go there.
 
 Now it''s
-collectlabel -d "Desc" -O 10.26033/j028-3a58 -T "Arecibo Radar Doppler Spectra" -e "Nolan,M.C." -L gbo.ast.radar.arecibo.doppler_spectra_of_asteroids targets dates */collection_*csv
+collectlabel -d "Desc" -O 10.26033/j028-3a58 -T "Arecibo Radar Doppler Spectra of Asteroids" -e "Nolan,M.C." -L gbo.ast.radar.arecibo.doppler_spectra_of_asteroids targets dates */collection_*csv
 You can fill the description here or edit it later. That will make the collection_*.xls files and the bundle.xls file. 
 
-delete the dates and targets files. Hmm, it wouldn''t be crazy to keep a targets file for the bundle.
+If it gives an error on line 253, you probably don''t have the context files in the doc directory (see kluge above)
 
-To get the standard doc files:
-cd doctemplates
-copydocs -L urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids -d descinationdocdrectory
+copy the references xml right efore <Bundle>
+
+delete the dates and targets files. Hmm, it wouldn''t be crazy to keep a targets file for the bundle.
 
 If you need to make more doc files:
 

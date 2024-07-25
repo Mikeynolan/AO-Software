@@ -411,8 +411,8 @@ our $templateb = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>None</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
         <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>bundle_to_investigation</reference_type>
@@ -475,8 +475,8 @@ our $templatec = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>None</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
         <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>collection_to_investigation</reference_type>
