@@ -109,6 +109,18 @@ if ($#prettyfile >= 0 && -e $prettyfile) {
   my $prettypdf = $prettyfile;
   $prettypdf =~ s/.ps/.ps.pdfa.pdf/;
   $newprettyfile = $prettypdf;
+  $newprettyfile =~ /(.+\.[s]?)(\d*)p([0]*)([1-9]?[0-9]*)(Hz\.cw.*$)/;
+  if ($2 || $4) {
+#  If either matches, then rewrite.
+    my ($w,$z,$f);
+    if (! $2) {$w = 0;} else {$w = $2;}
+    if (! $4) {$z = "0"; $p = "";} else {
+      $z = $3;
+      $p = substr(sprintf("%.2f", "0.$4"),2,2);
+    }
+    $newprettyfile = "$1${w}p$z$p$5";
+  }
+
   $newprettyfile =~ s/ps.pdfa.//;
   if (! $opt_l) {
     `pdf2pdfa $prettyfile`;
