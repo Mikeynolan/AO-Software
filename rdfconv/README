@@ -40,3 +40,6 @@ If you need to make more doc files:
 pdf2pdfa will convert to PDS-happy pdf. Cwplotlabel can make labels for pdf files.
 
 If you want to make another text file, just copy another label. Don''t forget to change the urn.
+
+2019AX5.2019J: renamed directory and file to be Jan10 to match UT date
+2019JU5L Changed directory to may16 to be consistent with the rest. Most of data on 16th local

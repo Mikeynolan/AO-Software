@@ -7,7 +7,7 @@ $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n,$opt_l);
 
-my $bundlelid ="urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy";
+my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids";
 my $invest = "Arecibo Radar Imaging and Doppler Spectroscopy";
 my $doi = "10.26033/j028-3a58";
 getopts("nlh");
