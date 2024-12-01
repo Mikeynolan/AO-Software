@@ -12,17 +12,16 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h, $opt_L, $opt_I,$opt_S);
+our ($opt_t, $opt_h, $opt_L, $opt_S);
 our $tfh;
 my $obssysfile;
 
-getopts('I:t:L:hS:');
+getopts('t:L:hS:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwlabel -L bundlelid -I investigationname -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
+Usage: cwlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
     -L:  LID for bundle, to be prepended onto the LIDs (required)
-    -I:  Investigation (required) Investigation to go with the LIDs
     -t:  Use template as a template for the xml. Default is internal template
     -S:  File to contain Observing System xml
     -h:  Print this message.
@@ -46,12 +45,12 @@ if($opt_L) {
 } else {
   die "Must provide bundle lid";
 }
-my $invest;
-if($opt_I) {
-  $invest = $opt_I;
-  } else {
-	  die "Must provide Investigation name";
-  }
+#my $invest;
+#if($opt_I) {
+#$invest = $opt_I;
+#} else {
+#die "Must provide Investigation name";
+#}
 if($opt_S) {
   $obssysfile = $opt_S;
 }
@@ -212,7 +211,6 @@ foreach $file (@ARGV) {
  $replace{'XXXTRGETPROPS'} = $targetprops;
  $replace{'XXXMORERADAR'} = $moreRadar;
  $replace{'XXXBUNDLELID'} = $bundlelid;
- $replace{'XXXINVEST'} = $invest;
  
 # And do the replace on the template.
  my $regex = join "|", map { quotemeta } keys %replace;

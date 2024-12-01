@@ -8,7 +8,6 @@ $Getopt::Std::STANDARD_HELP_VERSION = 1;
 our ($opt_h,$opt_n,$opt_l);
 
 my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids";
-my $invest = "Arecibo Radar Imaging and Doppler Spectroscopy";
 my $doi = "10.26033/j028-3a58";
 getopts("nlh");
 
@@ -91,7 +90,7 @@ EOF
   close $scrf;
   `idl87 < pdsscript.pro`;
 }
-my $cmd = "cwlabel -L $bundlelid -I '$invest' -S $obssysfile *.csv";
+my $cmd = "cwlabel -L $bundlelid -S $obssysfile *.csv";
 print "$cmd\n";
 `$cmd`;
 my $datanum = -1;
