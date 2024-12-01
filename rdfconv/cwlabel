@@ -474,10 +474,10 @@ our $template3 = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>XXXINVEST</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
-        <lid_reference>XXXBUNDLELID</lid_reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>data_to_investigation</reference_type>
       </Internal_Reference>
     </Investigation_Area>
