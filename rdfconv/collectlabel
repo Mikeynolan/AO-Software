@@ -390,7 +390,7 @@ our $templateb = <<EOT;
     <information_model_version>1.19.0.0</information_model_version>
     <product_class>Product_Bundle</product_class>
     <Citation_Information>
-      <author_list>XXXEDITORXXX</author_list>
+      <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
       <doi>XXXDOIXXX</doi>
       <description>-</description>

@@ -19,7 +19,8 @@ go to each of the data and document directories and:
 
 find . -name \*xml -print | xargs collectbundle
 
-That will make a csv file, dates, and targets. The csv is make by just grepping for urn: You need to sort and uniq all three. You need the targets and dates files from data, not document. Note: I have edited colectbundle since last running it to remove the observatory info which shouldn''t be here.
+That will make a csv file, dates, and targets. The csv is make by just grepping for urn: You need to sort and uniq all three. You need the targets and dates files from data, not document. Delete the context files that don''t have the bundle name.
+
 Rename the csvs to be
 collection_bundlename_data_inventory
 collection_bundlename_document_inventory
@@ -41,5 +42,5 @@ pdf2pdfa will convert to PDS-happy pdf. Cwplotlabel can make labels for pdf file
 
 If you want to make another text file, just copy another label. Don''t forget to change the urn.
 
-2019AX5.2019J: renamed directory and file to be Jan10 to match UT date
+2019AX5.2019J: renamed directory and file to be Jan10 to match UT date. Needed to edit log_output to correct file names
 2019JU5L Changed directory to may16 to be consistent with the rest. Most of data on 16th local
