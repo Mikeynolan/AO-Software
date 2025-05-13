@@ -1,0 +1,610 @@
+#!/usr/bin/perl -w
+#
+#use Text::CSV;
+use Getopt::Std qw(getopts);
+use File::Spec;
+use strict;
+use warnings;
+
+# For the cheezy csv parser
+my $sep = ',';
+my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
+
+my $file;
+my $lcfile;
+our ($opt_t, $opt_h, $opt_L, $opt_S);
+our $tfh;
+my $obssysfile;
+
+getopts('t:L:hS:');
+
+if ($opt_h) {
+ print STDERR <<EOT;
+Usage: cwlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
+    -L:  LID for bundle, to be prepended onto the LIDs (required)
+    -t:  Use template as a template for the xml. Default is internal template
+    -S:  File to contain Observing System xml
+    -h:  Print this message.
+EOT
+ exit;
+}
+if ($opt_t) {
+ open($tfh, "<", $opt_t) || die;
+} else {
+ open($tfh, "<", gettemplate()) || die;
+}
+#my $doi;
+#if($opt_O) {
+#  $doi = $opt_O;
+#} else {
+#  die "Must provide doi";
+#}
+my $bundlelid;
+if($opt_L) {
+  $bundlelid = $opt_L;
+} else {
+  die "Must provide bundle lid";
+}
+#my $invest;
+#if($opt_I) {
+#$invest = $opt_I;
+#} else {
+#die "Must provide Investigation name";
+#}
+if($opt_S) {
+  $obssysfile = $opt_S;
+}
+foreach $file (@ARGV) {
+ my %replace;
+# $replace{'XXXDOIXXX'} = $doi;
+ open(my $fh, "< $file") || die;
+ my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
+ my $author = '';
+ my $editor = '';
+ my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark,$obssysstring);
+ my ($ncols,$version,$ttype,$rdffile,$xmlname);
+ my $writepdsversion;
+ my $btags = 0;
+ my $bextra = 0;
+ my $bdata = 0;
+ my $tell = 0;
+ my $ntags = 0;
+ my $ontags = 0;
+ my $nextra = 0;
+ my $onextra = 0;
+ my $ndata = 0;
+ my $ondata = 0;
+ my $onlabel = 1;
+ my $onheader = 1;
+# This script is CW. 
+ my $moreRadar = '          <radar:observation_purpose>Doppler</radar:observation_purpose>
+';
+ my $txprops = '';
+# Modulation under discussion in radar dictionary as of 02/2022. Not neccessary
+# for CW, so skipping
+# my $txprops = '            <radar:Modulation>
+#              <radar:power_modulation>CW</radar:power_modulation>
+#              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
+#            </radar:Modulation>
+#';
+ my $targetprops ='';
+ my $rtt;
+ my $txpwr;
+ while (<$fh>) {
+  if (! $ondata) { # Could be lots, skip all the parsing
+   $tell = tell $fh;
+   if (/^# Keywords/){
+# Find our how many columns
+    my $count = (tr /,//);
+    $ncols = $count + 1;
+    if ($ncols != 4) {
+     print STDERR "The labels for 2-column aren't right yet, you'll need to fix them up\n";
+    }
+    $replace{'XXXNCOLS'} = $ncols;
+    next;
+   } elsif (/^RDFTags/) {
+    $btags = $tell;
+    $replace{'XXXTOFFSET'} = $btags;
+    $ontags = 1;
+    $onextra = 0;
+    $ondata = 0;
+    next;
+   } elsif (/^RDFExtra/) {
+    $bextra = $tell;
+    $replace{'XXXEOFFSET'} = $bextra;
+    $onextra = 1;
+    $ontags = 0;
+    $ondata = 0;
+    next;
+   } elsif (/^# Data/) {
+    $bdata = $tell;
+    $replace{'XXXDOFFSET'} = $bdata;
+    $ondata = 1;
+    $onheader = 0;
+    $onextra = 0;
+    $ontags = 0;
+    next;
+   } elsif (/^# Column Definitions/) {
+    $onextra = 0;
+    $ontags = 0;
+   } elsif (/^#/) {
+    next;
+   }
+  
+   if ($onheader) {
+# CSV parser stolen from stackoverflow Uses re set above
+# Not very fancy but does allow commas inside quotes
+    my @cells;
+    s/\r?\n$//;
+    while(/$re/g) {
+      my $value = defined $1 ? $1 : $2;
+      push @cells, (defined $value ? $value : '');
+    }
+     if ($cells[0] =~ /Product Name/) {
+      $pname = $cells[1];
+    } elsif ($cells[0] =~ /Product Version/) {
+      $version = $cells[1];
+      $replace{'XXXVERSION'} = $version;
+    } elsif ($cells[0] =~ /Start Time/) {
+      $start = $cells[1];
+      $replace{'XXXSTART'} = $start;
+    } elsif ($cells[0] =~ /Stop Time/) {
+      $stopt = $cells[1];
+      $replace{'XXXSTOP'} = $stopt;
+    } elsif ($cells[0] =~ /Target Name/) {
+      $tname = $cells[1];
+      if ($tname =~ /(\d{4})([A-Z]{2}.*)/) {
+        $tname = "$1 $2";
+      }
+      $replace{'XXXTARGET'} = $tname;
+    } elsif ($cells[0] =~ /Target Type/) {
+      $ttype = $cells[1];
+      $replace{'XXXTTYPE'} = $ttype;
+    } elsif ($cells[0] =~ /Editor/) {
+      $editor = $cells[1];
+      $replace{'XXXEDITOR'} = $editor;
+    } elsif ($cells[0] =~ /Author/) {
+      $author = $cells[1];
+      $replace{'XXXAUTHOR'} = $author;
+    } elsif ($cells[0] =~ /Creation Date/) {
+      $cdate = $cells[1];
+      $replace{'XXXCDATE'} = $cdate;
+      $replace{'XXXYEAR'} = substr($cdate, 0, 4);
+    } elsif ($cells[0] =~ /Observing System Bookmark/) {
+      $bookmark = $cells[1];
+    } elsif ($cells[0] =~ /Original CW data file/) {
+      $rdffile = $cells[1];
+    } elsif ($cells[0] =~ /Software Version/) {
+      $writepdsversion = $cells[1];
+    } elsif ($cells[0] =~ /rttim/) {
+      $rtt = $cells[1];
+      $targetprops .= "            <radar:transmitter_to_receiver_lighttime unit=\"s\">$rtt</radar:transmitter_to_receiver_lighttime>\n";
+    } elsif ($cells[0] =~ /trpwr/) {
+      $txpwr = $cells[1] * 1000;
+      $txprops .= "            <radar:transmitter_power unit=\"W\">$txpwr</radar:transmitter_power>\n";
+    } # case
+   } # onheader
+# If we get here, and any of the counters are running, we should count them.
+   if ($ontags) { $ntags++;}
+   if ($onextra) { $nextra++;}
+  } else { # !ondata
+   $ndata++;
+  }
+ } # While fh
+ close $fh;
+#now we have been through the file and know how many of everything there are.
+ $replace{'XXXNTAGS'} = $ntags;
+ $replace{'XXXNEXTRA'} = $nextra;
+ $replace{'XXXNDATA'} = $ndata;
+ $replace{'XXXCSVFILE'} = $filename;
+ $replace{'XXXPTITLE'} = "$pname $start";
+ $lcfile = lc $file;
+# Remove extension per liens list
+ $lcfile =~ s/.csv//;
+ $lcstart = lc $start;
+ ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
+ $obssysstring = obssys($bookmark);
+ # Need to fix up here as we will write separately
+ $obssysstring =~ s/XXXBUNDLELID/$bundlelid/g;
+ $replace{'XXXOBSSYSTEM'} = $obssysstring;
+ $replace{'XXXTXPROPS'} = $txprops;
+ $replace{'XXXTRGETPROPS'} = $targetprops;
+ $replace{'XXXMORERADAR'} = $moreRadar;
+ $replace{'XXXBUNDLELID'} = $bundlelid;
+ 
+# And do the replace on the template.
+ my $regex = join "|", map { quotemeta } keys %replace;
+ $regex = qr/$regex/;
+
+ seek($tfh, 0, 0) || die; #rewind template
+
+ ($xmlname = $file) =~ s/\.csv$/.xml/;
+ open (my $xfh, "> $xmlname") || die;
+ while (<$tfh>) {
+  s/($regex)/$replace{$1}/g;
+  print $xfh $_;
+ }
+ close $xfh;
+ open ($xfh, "> $obssysfile") || die;
+ print $xfh $obssysstring;
+ close $xfh;
+
+} # While @ARGV
+
+sub obssys {
+# We need to parse the bookmarks and create a string with the various pieces
+# This is probably easiest to do pretty brute force.
+
+my $book = $_[0];
+# Was a telescope used (telescope and facility.
+# observatories
+my $ao = 0;
+my $gold = 0;
+my $gbt = 0;
+# facilities
+my $ao305 = 0;
+my $dss14 = 0;
+my $dss13 = 0;
+my $gbtt = 0;
+# instruments
+my $aotx = 0;
+my $aorx = 0;
+my $dss14tx = 0;
+my $dss14rx = 0;
+my $dss13tx = 0;
+my $dss13rx = 0;
+my $gbtrx = 0;
+# which did we use for what
+my $tx = 0;
+my $rx = 0;
+# backends
+my $aori = 0;
+my $pfs = 0;
+
+my %sta= (
+  -9 => 'GBT',
+  -14 => 'DSS-14',
+  -13 => 'DSS-13',
+  -1 => 'Arecibo'
+);
+
+if ($book =~ /AO TX/) {
+ $ao = 1;
+ $ao305 = 1;
+ $tx = -1;
+ $aotx = 1;
+}
+if ($book =~ /AO RX/) {
+ $ao = 1;
+ $ao305 = 1;
+ $aorx = 1;
+ $rx = -1;
+}
+if ($book =~ /AO RI/) {
+ $ao = 1;
+ $aori = 1;
+}
+if ($book =~ /DSS14 TX/) {
+ $gold = 1;
+ $dss14 = 1;
+ $dss14tx = 1;
+ $tx = -14;
+}
+if ($book =~ /DSS14 RX/) {
+ $gold = 1;
+ $dss14 = 1;
+ $dss14rx = 1;
+ $rx = -14;
+}
+if ($book =~ /PFS/) {
+ $pfs = 1;
+}
+if ($book =~ /GBT/) {
+ $gbt = 1;
+ $gbtt = 1;
+ $gbtrx = 1;
+ $rx = -9
+}
+my $sysname;
+if ($tx == $rx) {
+ $sysname="Monostatic " . $sta{$tx} . " Radar";
+} else {
+ $sysname="Bitstatic " . $sta{$tx} . "-" . $sta{$rx} . " Radar";
+}
+my $obssys = <<EOT;
+    <Observing_System>
+      <name>$sysname</name>
+EOT
+if ($ao) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory</name>
+        <type>Host</type>
+        <Internal_Reference>
+           <lid_reference>urn:nasa:pds:context:facility:observatory.arecibo</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($ao305) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>305-m fixed spherical reflecting antenna</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:arecibo.305m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aotx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Planetary Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.trans_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($aorx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo 2380 MHz Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($gold) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Complex</name>
+        <type>Host</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:arecibo.305m.recv_s</lid_reference>
+          <reference_type>is_facility</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>70-m steerable parabolic radio telescope</name>
+        <type>Telescope</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:telescope:goldstone.dss14_70m</lid_reference>
+          <reference_type>is_telescope</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14tx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Receiver</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+          <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.recv_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($dss14rx) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Goldstone Solar System Radar Transmitter</name>
+        <type>Instrument</type>
+        <Internal_Reference>
+           <lid_reference>urn:nasa:pds:context:instrument:goldstone.dss14_70m.trans_x</lid_reference>
+          <reference_type>is_instrument</reference_type>
+        </Internal_Reference>
+      </Observing_System_Component>
+EOT
+}
+if ($pfs) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Radar Portable Fast Sampler</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+if ($aori) {
+ $obssys .= <<EOT;
+      <Observing_System_Component>
+        <name>Arecibo Observatory Radar Interface</name>
+        <type>Instrument</type>
+      </Observing_System_Component>
+EOT
+}
+# Close out
+$obssys .= "    </Observing_System>";
+return $obssys;
+}
+
+sub gettemplate {
+#
+# THere are issues both with having this here and with a separate file.
+#
+our $template3 = <<EOT;
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Observational
+ xmlns="http://pds.nasa.gov/pds4/pds/v1"
+ xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd
+                     http://pds.nasa.gov/pds4/radar/v1 https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.xsd">
+  <Identification_Area>
+    <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
+    <version_id>XXXVERSION</version_id>
+    <title>XXXPTITLE</title>
+    <information_model_version>1.19.0.0</information_model_version>
+    <product_class>Product_Observational</product_class>
+    <Citation_Information>
+      <editor_list>XXXEDITOR</editor_list>
+      <publication_year>XXXYEAR</publication_year>
+      <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
+    </Citation_Information>
+  </Identification_Area>
+  <Observation_Area>
+    <Time_Coordinates>
+      <start_date_time>XXXSTART</start_date_time>
+      <stop_date_time>XXXSTOP</stop_date_time>
+    </Time_Coordinates>
+    <Primary_Result_Summary>
+      <purpose>Science</purpose>
+      <processing_level>Partially Processed</processing_level>
+      <Science_Facets>
+        <discipline_name>Small Bodies</discipline_name>
+        <facet1>Physical Properties</facet1>
+      </Science_Facets>
+    </Primary_Result_Summary>
+    <Investigation_Area>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
+      <Internal_Reference>
+        <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
+        <reference_type>data_to_investigation</reference_type>
+      </Internal_Reference>
+    </Investigation_Area>
+XXXOBSSYSTEM
+    <Target_Identification>
+      <name>XXXTARGET</name>
+      <type>XXXTTYPE</type>
+    </Target_Identification>
+    <Discipline_Area>
+      <radar:Radar>
+        <radar:Groundbased_Radar>
+XXXMORERADAR          <radar:Transmission_Properties>
+XXXTXPROPS          </radar:Transmission_Properties>
+          <radar:Target_Properties>
+XXXTRGETPROPS          </radar:Target_Properties>
+        </radar:Groundbased_Radar>
+      </radar:Radar>
+    </Discipline_Area>
+  </Observation_Area>
+  <File_Area_Observational>
+    <File>
+      <file_name>XXXCSVFILE</file_name>
+      <local_identifier>file</local_identifier>
+      <creation_date_time>XXXCDATE</creation_date_time>
+    </File>
+    <Table_Delimited>
+      <local_identifier>TAGS</local_identifier>
+      <offset unit="byte">XXXTOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>The Tags are metadata describing each individual radar spectrum. They are separately stored for each polarization. They were originally stored as PDS type IEEE754MSBSingle, and are converted to a text format that attempts to preserve that precision, though with trailing zeroes after the decimal point removed. They are presented here as the tag name, the value for each polarization, and a short definition.</description>
+      <records>XXXNTAGS</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>tag</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Name</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>tagvalpol1</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Tag Value for polarization 1</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>tagvalpol2</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Tag Value for polarization 2</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>description</name>
+          <data_type>UTF8_String</data_type>
+          <description>definition and units in []</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+    <Table_Delimited>
+      <local_identifier>EXTRA_TAGS</local_identifier>
+      <offset unit="byte">XXXEOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>Extra Tags are metadata associated with each pair of spectra. They are in user-defined, and so can in principle be anything, though the standard processing software defined a set of them. These were stored in the original files as text, and so can be arbitrary precision. They are presented as tagname,value,intended format,description. Descriptions are provided for fields generated by the standard reduction or as added by the user.</description>
+      <records>XXXNEXTRA</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>extratag</name>
+          <data_type>UTF8_String</data_type>
+          <description>Extra Tag Name</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>value</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Value</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>format</name>
+          <data_type>UTF8_String</data_type>
+          <description>Tag Intended Format, f=float, d=double, s=string, i=integer</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>description</name>
+          <data_type>UTF8_String</data_type>
+          <description>description and units in []</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+    <Table_Delimited>
+      <local_identifier>DOPPLER_SPECTRUM</local_identifier>
+      <offset unit="byte">XXXDOFFSET</offset>
+      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
+      <description>Frequencies and echo power. Power is normalized to unit standard deviation.</description>
+      <records>XXXNDATA</records>
+      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
+      <field_delimiter>Comma</field_delimiter>
+      <Record_Delimited>
+        <fields>XXXNCOLS</fields>
+        <groups>0</groups>
+        <Field_Delimited>
+          <name>frequency</name>
+          <data_type>ASCII_Real</data_type>
+          <unit>Hz</unit>
+          <description>Offset from Ephemeris frequency</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol1power</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Echo power spectral density in polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>pol2power</name>
+          <data_type>ASCII_Real</data_type>
+          <description>Echo power spectral density in polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
+        </Field_Delimited>
+        <Field_Delimited>
+          <name>unused</name>
+          <data_type>UTF8_String</data_type>
+          <description>Unused column (needed for header)</description>
+        </Field_Delimited>
+      </Record_Delimited>
+    </Table_Delimited>
+  </File_Area_Observational>
+</Product_Observational>
+EOT
+
+return \$template3;
+}
+
