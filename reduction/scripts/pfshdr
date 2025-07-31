@@ -1,0 +1,106 @@
+#!/usr/bin/perl -w
+use Getopt::Std;
+use constant SPD    => 86400.0;
+use strict;
+
+our $opt_z;
+
+#use String::Scanf;
+
+our ($opt_l,$opt_r,$opt_f);
+my ($year, $doy, $secs, $time, $name, $rawname, $basename, $num);
+
+getopts ("lf:rz");
+
+if ($#ARGV < 1) {
+    usage();
+    exit(1);
+}
+if ($ARGV[0] =~ /data\d+/) {
+    print STDERR "Really call the files $ARGV[0]? No. I won't.\n";
+    exit(2);
+}
+
+sub usage {
+    print STDERR ("Usage: pfshdr  [-l][-f first][-r][-z] basename datafilenames\n");
+    print STDERR ("Options\n\t-f\tfirst first hdrfN\n\t-l\tmake symlinks to rawfN\n\t-r\tadd info to existing hdr files (otherwise skip)\n\t-z\tinclude zero-size files\n");
+}
+
+if ($opt_f) {
+    $num = $opt_f;
+} else {
+    $num = 1;
+}
+
+$basename = shift;
+
+for (@ARGV) {
+    $name = "$basename.hdrf$num";
+    $rawname = "$basename.rawf$num";
+    
+    if (! (($time) = /data(\d+)\.0/)) {
+	print STDERR "$_ doesn't look like a pfs file name, skipping it\n";
+	next;
+    }
+    if (-z $_ && ! $opt_z) {
+	print STDERR "$_ is empty, skipping it\n";
+	next;
+    }
+    ($year, $doy, $secs) = ymdtoyds($time);
+    
+    $secs -= 14400;
+    if ($secs < 0) {
+	$secs += SPD;
+	$doy--;
+	if ($doy < 1) {
+	    $doy = 365 + (($year % 4) == 0);
+	    $year--;
+	}
+    }
+    if ((! -s $name) || $opt_r) {
+	open (HDR, ">> $name");
+	printf HDR ("Date:$year%3.3d\nstScanTm:$secs\n", $doy);
+	printf HDR ("FreqReversed:no\n");
+	printf HDR ("LittleEndian:yes\n");
+	printf HDR "$_\n";
+	close HDR;
+    }
+    if ($opt_l) {
+	symlink($_, $rawname);
+    }
+    $num++;
+}
+
+
+sub ymdtoyds {
+
+  use strict 'vars';
+
+  my ($datestring) = @_;
+
+  my ($year, $doy, $sfm, $offset);
+
+  my ($K, $Day, $Secs, $yyyy, $mm, $dd, $hh, $min, $ss, $alph, $A, $B, $C, $D, $E, $JD);
+
+  ($yyyy, $mm, $dd, $hh, $min, $ss) = unpack("a4a2a2a2a2a2", $datestring);
+#sscanf("%4d%2d%2d%2d%2d%2d", $datestring);
+
+#  $yyyy = int($datestring / 10000000000);
+#  $datestring -= 10000000000 * $yyyy;
+#  $mm = int($datestring / 100000000);
+#  $datestring -= 100000000 * $mm;
+#  $dd = int($datestring / 1000000);
+#  $datestring -= 1000000 * $dd;
+#  $hh = int($datestring / 10000);
+#  $datestring = 10000 * $hh;
+#  $min = $datestring / 100;
+#  $ss = $datestring % 100;
+
+  if ($yyyy % 4 == 0) {$K = 1;} else {$K = 2;} # Valid through 2200 Feb 28
+
+  $Day = int(275 * $mm / 9) - $K * int(($mm + 9) / 12) + $dd - 30;
+
+  $Secs = $ss + $min * 60 + $hh * 3600;
+
+  return($yyyy, $Day, $Secs);
+}
