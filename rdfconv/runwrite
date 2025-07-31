@@ -6,6 +6,7 @@ use File::Spec;
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 our ($opt_h,$opt_n,$opt_l);
+our $nameoverride;
 
 my $bundlelid ="urn:nasa:pds:gbo.ast.radar.arecibo.doppler_spectra_of_asteroids";
 my $doi = "10.26033/j028-3a58";
@@ -53,6 +54,30 @@ while (<$lfh>) {
 
 die "No datafile found in logfile $logfile in dir $here\n" unless defined($df);
 
+# Check for overrides
+$nameoverride=0;
+my ($key, $val); 
+if (-e 'OVERRIDE') {
+  open (my $ofh, '<', 'OVERRIDE') or die "Couldn't open OVERRIDE file: $!";
+  while (<$ofh>) {
+    if (/(\S+)\s*=\s*(\S+)/) {
+      $key = $1;
+      $val = $2;
+    } else {next;}
+    if (lc($key) eq lc("name") || lc($key) eq lc("target") || lc($key) eq lc("object")) {
+      print STDOUT "OVERRIDE target from '$obj' to '$val'\n";
+      $obj = $val;
+      $nameoverride = 1;
+      next;
+    }
+    if (lc($key) eq lc("date")) {
+      printf STDOUT "OVERRIDE date string from '$pdate' to '$val'\n";
+      $pdate = $val;
+      next;
+    }
+  }
+}
+
 #Generate writefile
 
 $rdffile = "$obj.$pdate.$res.rdf";
@@ -70,6 +95,11 @@ if ($#prettyfile < 0) {
 if (! $opt_l) {
   open ($scrf, ">", "pdsscript.pro") || die;
 
+  if($nameoverride) {
+    $override = "setpds, target='$obj'";
+  } else {
+    $override = "";
+  }
   print $scrf <<EOF;
 \@phil
 \@rirawinit
@@ -78,6 +108,7 @@ if (! $opt_l) {
 resetstack
 readrdf, '$rdffile'
 setpds, pname='${obj}_${pdate}_doppler_spectra'
+$override1
 setpds, editor='Nolan, M.C.'
 pointing, data='$df', /noplot, /out, /stack
 nst = getnstack()
@@ -90,7 +121,9 @@ EOF
   close $scrf;
   `idl87 < pdsscript.pro`;
 }
-`cwlabel -L $bundlelid -O $doi -S $obssysfile *.csv`;
+my $cmd = "cwlabel -L $bundlelid -S $obssysfile *.csv";
+print "$cmd\n";
+`$cmd`;
 my $datanum = -1;
 my $docpath;
 if ($#prettyfile >= 0 && -e $prettyfile) {
@@ -106,6 +139,18 @@ if ($#prettyfile >= 0 && -e $prettyfile) {
   my $prettypdf = $prettyfile;
   $prettypdf =~ s/.ps/.ps.pdfa.pdf/;
   $newprettyfile = $prettypdf;
+  $newprettyfile =~ /(.+\.[s]?)(\d*)p([0]*)([1-9]?[0-9]*)(Hz\.cw.*$)/;
+  if ($2 || $4) {
+#  If either matches, then rewrite.
+    my ($w,$z,$f);
+    if (! $2) {$w = 0;} else {$w = $2;}
+    if (! $4) {$z = "0"; $p = "";} else {
+      $z = $3;
+      $p = substr(sprintf("%.2f", "0.$4"),2,2);
+    }
+    $newprettyfile = "$1${w}p$z$p$5";
+  }
+
   $newprettyfile =~ s/ps.pdfa.//;
   if (! $opt_l) {
     `pdf2pdfa $prettyfile`;

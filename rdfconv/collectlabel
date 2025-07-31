@@ -10,21 +10,22 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_O, $opt_V);
+our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_O, $opt_R, $opt_V);
 our $tfh;
-our ($title, $lid, $descr, $date, $year, $docname, $editor, $version, $doi);
+our ($title, $lid, $descr, $date, $year, $docname, $editor, $version, $doi, $refxmlfile, $refxml);
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 sub main::HELP_MESSAGE {
  print STDERR <<EOT;
-Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" -O DOI [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
+Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" -O DOI [-R refxml] [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
          Targets is the list of targets. dates is the list of dates data.csv and docs.csv are the inventory files for the data and documentation directories, respectively.
     -T:  Set title (required)
     -L:  Set bundle LID (required)
-    -d:  Set Description (required)
+    -d:  Set Description
     -e:  Set editor *required* 
     -O:  DOI *required*
+    -R:  refxml File with references in XML format for bundle label.
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
@@ -34,7 +35,7 @@ EOT
  exit;
 }
 
-getopts('T:e:d:D:I:L:O:V:h');
+getopts('T:e:d:D:I:L:O:R:V:h');
 
 if ($opt_e) {
  $editor = $opt_e;
@@ -51,16 +52,19 @@ if ($opt_O) {
 } else {
   die "DOI option is required";
 }
+if ($opt_R) {
+  $refxmlfile = $opt_R;
+}
 if ($opt_T) {
   $title=$opt_T;
 } else {
   die "title option is required";
 }
-#if ($opt_d) {
-  #$descr = $opt_d;
-#} else {
-  #die "Description option is required";
-#}
+if ($opt_d) {
+  $descr = $opt_d;
+} else {
+  $descr="-";
+}
 if ($opt_I) {
   $date = $opt_I;
   $date =~ /(\d\d\d\d)-\d\d-\d\d/ || die "Date must be YYYY-MM-DD";
@@ -94,29 +98,35 @@ if ($#ARGV < 3) {
   
 my ($tfile, $dfile, $datfile, $docfile) = @ARGV;
 open (my $objs, "<$tfile") || die "Couldn't open targets $tfile";
-chomp (my @objects = <$objs>) ;
+chomp (my @allobjs = <$objs>) ;
+@allobjs = sort @allobjs;
+my %seen = ();
+# This does uniq
+my @objects = grep { !$seen{$_}++ } @allobjs;
 close $objs;
 
 open (my $dates, "<$dfile") || die "Couldn't open dates $dfile";
-my $firstdate = 0;
-my $lastdate;
-while (<$dates>) {
- chomp;
- if (! $firstdate && /^.+$/) {
-  $firstdate = $_;
- }
- if (/^.+$/) {
-  $lastdate = $_;
- }
-}
+chomp (my @dates = <$dates>);
+@dates = sort @dates;
+my $firstdate = $dates[0];
+my $lastdate = $dates[$#dates];;
 close $dates;
 
 open(my $urns, "<$datfile") || die "couldn't open data collection $datfile";
 chomp (my @daturns = <$urns>);
 close $urns;
+@daturns = sort(@daturns);
+%seen = ();
+@daturns = grep { !$seen{$_}++ } @daturns;
+@daturns = grep { ! /urn:nasa:pds:context/ } @daturns;
+
 open($urns, "<$docfile") || die "couldn't open doc collection $docfile";
 chomp (my @docurns = <$urns>);
 close $urns;
+@docurns = sort(@docurns);
+%seen = ();
+@docurns = grep { !$seen{$_}++ } @docurns;
+@docurns = grep { ! /urn:nasa:pds:context/ } @docurns;
 
 # Find the facility info.
 # observatories
@@ -143,28 +153,40 @@ my $rx = 0;
 my $aori = 0;
 my $pfs = 0;
 
-if(grep (/urn:.*observatory.arecibo/, @daturns)) {$ao=1;}
-if(grep (/urn:.*:telescope:arecibo.305m/, @daturns)) {$ao305=1;}
-if(grep (/urn:.*instrument:arecibo.305m.trans_s/, @daturns)) {
+if(grep (/urn:.*observatory.arecibo/, @docurns)) {$ao=1;}
+if(grep (/urn:.*:arecibo.305m:/, @docurns)) {$ao305=1;}
+if(grep (/urn:.*:arecibo.305m.trans_s:/, @docurns)) {
   $aotx=1;
   $tx = -1;
 }
-if(grep (/urn:.*instrument:arecibo.305m.recv_s/, @daturns)) {
+if(grep (/urn:.*:arecibo.305m.recv_s:/, @docurns)) {
   $aorx=1;
   $rx = -1;
 }
-if(grep (/urn:.*observatory.goldstone/, @daturns)) {$gold=1;}
-if(grep (/urn:.*telescope:goldstone.dss14_70m/, @daturns)) {$dss14=1;}
-if(grep (/urn.*:instrument:goldstone.dss14_70m.recv_x/, @daturns)) {
+if(grep (/urn:.*observatory.goldstone/, @docurns)) {$gold=1;}
+if(grep (/urn:.*:goldstone.dss14_70m:/, @docurns)) {$dss14=1;}
+if(grep (/urn.*:goldstone.dss14_70m.recv_x:/, @docurns)) {
   $dss14rx=1;
   $tx = -14;
 }
-if(grep (/urn:.*instrument:goldstone.dss14_70m.trans_x/, @daturns)) {
+if(grep (/urn:.*:goldstone.dss14_70m.trans_x:/, @docurns)) {
   $dss14tx=1;
   $tx = -14;
 }
 
+if (defined($refxmlfile)) {
+  open((my $xmlfh), '<', $refxmlfile) or die "cannot open '$refxmlfile': $!";
+  {
+    local $/;
+    $refxml = <$xmlfh>;
+  }
+  close $refxmlfile;
+} else {
+  $refxml="";
+}
 my %replace;
+$replace{'XXXREFXMLXXX'} = $refxml;
+$replace{'XXXDESCRIPTIONXXX'} = $descr;
 $replace{'XXXPTITLEXXX'} = $title;
 $replace{'XXXLIDXXX'} = $lid;
 $replace{'XXXDOIXXX'} = $doi;
@@ -186,10 +208,8 @@ foreach (@objects) {
   if ($tname =~ /(\d{4})([A-Z]{2}.*)/) {
     $tname = "$1 $2";
   }
-$targets .= "    <Target_Identification>
-      <name>$tname</name>
-      <type>Asteroid</type>
-    </Target_Identification>";
+$targets .= "    <Target_Identification> <name>$tname</name> <type>Asteroid</type></Target_Identification>
+";
 }
  $replace{'XXXTARGETSXXX'} = $targets;
  $replace{'XXXNUMRECXXX'} = $#daturns+1;
@@ -390,10 +410,10 @@ our $templateb = <<EOT;
     <information_model_version>1.19.0.0</information_model_version>
     <product_class>Product_Bundle</product_class>
     <Citation_Information>
-      <author_list>XXXEDITORXXX</author_list>
+      <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
       <doi>XXXDOIXXX</doi>
-      <description>-</description>
+      <description>XXXDESCRIPTIONXXX</description>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
@@ -411,19 +431,17 @@ our $templateb = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>None</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
         <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>bundle_to_investigation</reference_type>
       </Internal_Reference>
     </Investigation_Area>
 XXXOBSSYSXXX
-XXXTARGETSXXX
-  </Context_Area>
-  <Bundle>
+XXXTARGETSXXX  </Context_Area>
+XXXREFXMLXXX  <Bundle>
     <bundle_type>Archive</bundle_type>
-    <description>-</description>
   </Bundle>
   <Bundle_Member_Entry>
     <lidvid_reference>urn:nasa:pds:XXXLIDXXX:document::1.0</lidvid_reference>
@@ -458,8 +476,7 @@ our $templatec = <<EOT;
     <Citation_Information>
       <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
-      <doi>XXXDOIXXX</doi>
-      <description>-</description>
+      <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
@@ -477,16 +494,15 @@ our $templatec = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>None</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
         <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>collection_to_investigation</reference_type>
       </Internal_Reference>
     </Investigation_Area>
 XXXOBSSYSXXX
-XXXTARGETSXXX
-  </Context_Area>
+XXXTARGETSXXX  </Context_Area>
   <Collection>
     <collection_type>XXXCTYPEXXX</collection_type>
   </Collection>

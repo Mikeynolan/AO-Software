@@ -12,17 +12,16 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h, $opt_L, $opt_O,$opt_S);
+our ($opt_t, $opt_h, $opt_L, $opt_S);
 our $tfh;
 my $obssysfile;
 
-getopts('O:t:L:hS:');
+getopts('t:L:hS:');
 
 if ($opt_h) {
  print STDERR <<EOT;
 Usage: cwlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
-    -L:  LID for bundle, to be prepended onto ite  LIDs (required)
-    -O:  DOI (required)
+    -L:  LID for bundle, to be prepended onto the LIDs (required)
     -t:  Use template as a template for the xml. Default is internal template
     -S:  File to contain Observing System xml
     -h:  Print this message.
@@ -34,24 +33,30 @@ if ($opt_t) {
 } else {
  open($tfh, "<", gettemplate()) || die;
 }
-my $doi;
-if($opt_O) {
-  $doi = $opt_O;
-} else {
-  die "Must provide doi";
-}
+#my $doi;
+#if($opt_O) {
+#  $doi = $opt_O;
+#} else {
+#  die "Must provide doi";
+#}
 my $bundlelid;
 if($opt_L) {
   $bundlelid = $opt_L;
 } else {
   die "Must provide bundle lid";
 }
+#my $invest;
+#if($opt_I) {
+#$invest = $opt_I;
+#} else {
+#die "Must provide Investigation name";
+#}
 if($opt_S) {
   $obssysfile = $opt_S;
 }
 foreach $file (@ARGV) {
  my %replace;
- $replace{'XXXDOIXXX'} = $doi;
+# $replace{'XXXDOIXXX'} = $doi;
  open(my $fh, "< $file") || die;
  my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
  my $author = '';
@@ -467,8 +472,8 @@ our $template3 = <<EOT;
       </Science_Facets>
     </Primary_Result_Summary>
     <Investigation_Area>
-      <name>None</name>
-      <type>Other Investigation</type>
+      <name>Arecibo Radar Imaging and Doppler Spectroscopy</name>
+      <type>Individual Investigation</type>
       <Internal_Reference>
         <lid_reference>urn:nasa:pds:context:investigation:individual.arecibo_radar_imaging_and_doppler_spectroscopy</lid_reference>
         <reference_type>data_to_investigation</reference_type>
