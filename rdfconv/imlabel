@@ -20,7 +20,7 @@ getopts('t:L:hS:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.csv [file.csv ...]
+Usage: imlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.fits [file.fits ...]
     -L:  LID for bundle, to be prepended onto the LIDs (required)
     -t:  Use template as a template for the xml. Default is internal template
     -S:  File to contain Observing System xml
@@ -64,24 +64,18 @@ foreach $file (@ARGV) {
  my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark,$obssysstring);
  my ($ncols,$version,$ttype,$rdffile,$xmlname);
  my $writepdsversion;
- my $btags = 0;
- my $bextra = 0;
  my $bdata = 0;
  my $tell = 0;
- my $ntags = 0;
- my $ontags = 0;
- my $nextra = 0;
- my $onextra = 0;
  my $ndata = 0;
  my $ondata = 0;
  my $onlabel = 1;
  my $onheader = 1;
-# This script is CW. 
- my $moreRadar = '          <radar:observation_purpose>Doppler</radar:observation_purpose>
+# This script is Imaging.
+ my $moreRadar = '          <radar:observation_purpose>Range-Doppler</radar:observation_purpose>
 ';
  my $txprops = '';
-# Modulation under discussion in radar dictionary as of 02/2022. Not neccessary
-# for CW, so skipping
+# Modulation under discussion in radar dictionary as of 02/2022. Still
+# not there 5/2025 skipping
 # my $txprops = '            <radar:Modulation>
 #              <radar:power_modulation>CW</radar:power_modulation>
 #              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
@@ -182,6 +176,7 @@ foreach $file (@ARGV) {
     } elsif ($cells[0] =~ /trpwr/) {
       $txpwr = $cells[1] * 1000;
       $txprops .= "            <radar:transmitter_power unit=\"W\">$txpwr</radar:transmitter_power>\n";
+      $txprops .= "            <radar:transmitter_frequency unit=\"Hz\">$txfreq</radar:tramsmitter_frequency>\n";
     } # case
    } # onheader
 # If we get here, and any of the counters are running, we should count them.
@@ -193,14 +188,11 @@ foreach $file (@ARGV) {
  } # While fh
  close $fh;
 #now we have been through the file and know how many of everything there are.
- $replace{'XXXNTAGS'} = $ntags;
- $replace{'XXXNEXTRA'} = $nextra;
- $replace{'XXXNDATA'} = $ndata;
  $replace{'XXXCSVFILE'} = $filename;
  $replace{'XXXPTITLE'} = "$pname $start";
  $lcfile = lc $file;
 # Remove extension per liens list
- $lcfile =~ s/.csv//;
+ $lcfile =~ s/.fits//;
  $lcstart = lc $start;
  ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
  $obssysstring = obssys($bookmark);
@@ -438,24 +430,24 @@ sub gettemplate {
 #
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1N00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1N00_1300.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
  xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
- xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd
-                     http://pds.nasa.gov/pds4/radar/v1 https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1J00_1000.xsd">
+ xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1N00.xsd
+                     http://pds.nasa.gov/pds4/radar/v1 https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1N00_1300.xsd">
   <Identification_Area>
     <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
     <title>XXXPTITLE</title>
-    <information_model_version>1.19.0.0</information_model_version>
+    <information_model_version>1.23.0.0</information_model_version>
     <product_class>Product_Observational</product_class>
     <Citation_Information>
       <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
+      <description>Radar Range-Doppler image as a FITS file</description>
     </Citation_Information>
   </Identification_Area>
   <Observation_Area>
@@ -501,106 +493,35 @@ XXXTRGETPROPS          </radar:Target_Properties>
       <local_identifier>file</local_identifier>
       <creation_date_time>XXXCDATE</creation_date_time>
     </File>
-    <Table_Delimited>
-      <local_identifier>TAGS</local_identifier>
-      <offset unit="byte">XXXTOFFSET</offset>
-      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
-      <description>The Tags are metadata describing each individual radar spectrum. They are separately stored for each polarization. They were originally stored as PDS type IEEE754MSBSingle, and are converted to a text format that attempts to preserve that precision, though with trailing zeroes after the decimal point removed. They are presented here as the tag name, the value for each polarization, and a short definition.</description>
-      <records>XXXNTAGS</records>
-      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
-      <field_delimiter>Comma</field_delimiter>
-      <Record_Delimited>
-        <fields>XXXNCOLS</fields>
-        <groups>0</groups>
-        <Field_Delimited>
-          <name>tag</name>
-          <data_type>UTF8_String</data_type>
-          <description>Tag Name</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>tagvalpol1</name>
-          <data_type>ASCII_Real</data_type>
-          <description>Tag Value for polarization 1</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>tagvalpol2</name>
-          <data_type>ASCII_Real</data_type>
-          <description>Tag Value for polarization 2</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>description</name>
-          <data_type>UTF8_String</data_type>
-          <description>definition and units in []</description>
-        </Field_Delimited>
-      </Record_Delimited>
-    </Table_Delimited>
-    <Table_Delimited>
-      <local_identifier>EXTRA_TAGS</local_identifier>
-      <offset unit="byte">XXXEOFFSET</offset>
-      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
-      <description>Extra Tags are metadata associated with each pair of spectra. They are in user-defined, and so can in principle be anything, though the standard processing software defined a set of them. These were stored in the original files as text, and so can be arbitrary precision. They are presented as tagname,value,intended format,description. Descriptions are provided for fields generated by the standard reduction or as added by the user.</description>
-      <records>XXXNEXTRA</records>
-      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
-      <field_delimiter>Comma</field_delimiter>
-      <Record_Delimited>
-        <fields>XXXNCOLS</fields>
-        <groups>0</groups>
-        <Field_Delimited>
-          <name>extratag</name>
-          <data_type>UTF8_String</data_type>
-          <description>Extra Tag Name</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>value</name>
-          <data_type>UTF8_String</data_type>
-          <description>Tag Value</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>format</name>
-          <data_type>UTF8_String</data_type>
-          <description>Tag Intended Format, f=float, d=double, s=string, i=integer</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>description</name>
-          <data_type>UTF8_String</data_type>
-          <description>description and units in []</description>
-        </Field_Delimited>
-      </Record_Delimited>
-    </Table_Delimited>
-    <Table_Delimited>
-      <local_identifier>DOPPLER_SPECTRUM</local_identifier>
-      <offset unit="byte">XXXDOFFSET</offset>
-      <parsing_standard_id>PDS DSV 1</parsing_standard_id>
-      <description>Frequencies and echo power. Power is normalized to unit standard deviation.</description>
-      <records>XXXNDATA</records>
-      <record_delimiter>Carriage-Return Line-Feed</record_delimiter>
-      <field_delimiter>Comma</field_delimiter>
-      <Record_Delimited>
-        <fields>XXXNCOLS</fields>
-        <groups>0</groups>
-        <Field_Delimited>
-          <name>frequency</name>
-          <data_type>ASCII_Real</data_type>
-          <unit>Hz</unit>
-          <description>Offset from Ephemeris frequency</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>pol1power</name>
-          <data_type>ASCII_Real</data_type>
-          <description>Echo power spectral density in polarization 1 normalized to unit standard deviation and zero mean in baseline</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>pol2power</name>
-          <data_type>ASCII_Real</data_type>
-          <description>Echo power spectral density in polarization 2 normalized to unit standard deviation and zero mean in baseline</description>
-        </Field_Delimited>
-        <Field_Delimited>
-          <name>unused</name>
-          <data_type>UTF8_String</data_type>
-          <description>Unused column (needed for header)</description>
-        </Field_Delimited>
-      </Record_Delimited>
-    </Table_Delimited>
+    <Header>
+      <offset unit="byte">0</offset>
+      <object_length unit="byte">XXXHEADERLENXXX</object_length>
+      <parsing_standard_id>FITS 3.0</parsing_standard_id>
+      <description>FITS attached header</description>
+    </Header>
+    <Array_2D>
+      <local_identifier>primary_image</local_identifier>
+      <offset unit="byte">XXXHEADERLENXXX</offset>
+      <axes>2</axes>
+      <axis_index_order>Last Index Fastest</axis_index_order>
+      <description>Tes Description</description>
+      <Element_Array>
+        <data_type>IEEE754MSBSingle</data_type>
+        <unit>DOPPLER</unit>
+        <scaling_factor>1</scaling_factor>
+        <value_offset>0.0</value_offset>
+      </Element_Array>
+      <Axis_Array>
+        <axis_name>Doppler</axis_name>
+        <elements>XXXNFREQXXX</elements>
+        <sequence_number>1</sequence_number>
+      </Axis_Array>
+      <Axis_Array>
+        <axis_name>Range</axis_name>
+        <elements>XXXNBINSXXX</elements>
+        <sequence_number>2</sequence_number>
+      </Axis_Array>
+    </Array_2D>
   </File_Area_Observational>
 </Product_Observational>
 EOT
