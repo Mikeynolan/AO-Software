@@ -9,8 +9,10 @@ our $opt_z;
 
 our ($opt_l,$opt_r,$opt_f);
 my ($year, $doy, $secs, $time, $name, $rawname, $basename, $num);
+our $opt_R;
+my $rev = "no";
 
-getopts ("lf:rz");
+getopts ("lf:rRz");
 
 if ($#ARGV < 1) {
     usage();
@@ -22,8 +24,8 @@ if ($ARGV[0] =~ /data\d+/) {
 }
 
 sub usage {
-    print STDERR ("Usage: pfshdr  [-l][-f first][-r][-z] basename datafilenames\n");
-    print STDERR ("Options\n\t-f\tfirst first hdrfN\n\t-l\tmake symlinks to rawfN\n\t-r\tadd info to existing hdr files (otherwise skip)\n\t-z\tinclude zero-size files\n");
+    print STDERR ("Usage: pfshdr  [-l][-f first][-r][-z][-R] basename datafilenames\n");
+    print STDERR ("Options\n\t-f\tfirst first hdrfN\n\t-l\tmake symlinks to rawfN\n\t-r\tadd info to existing hdr files (otherwise skip)\n\t-z\tinclude zero-size files\n\t-R Mark frequencies as reversed\n");
 }
 
 if ($opt_f) {
@@ -31,6 +33,10 @@ if ($opt_f) {
 } else {
     $num = 1;
 }
+if ($opt_R) {
+	$rev = "yes";
+}
+
 
 $basename = shift;
 
@@ -60,7 +66,7 @@ for (@ARGV) {
     if ((! -s $name) || $opt_r) {
 	open (HDR, ">> $name");
 	printf HDR ("Date:$year%3.3d\nstScanTm:$secs\n", $doy);
-	printf HDR ("FreqReversed:no\n");
+	printf HDR ("FreqReversed:$rev\n");
 	printf HDR ("LittleEndian:yes\n");
 	printf HDR "$_\n";
 	close HDR;
