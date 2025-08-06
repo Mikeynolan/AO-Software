@@ -1,0 +1,139 @@
+#!/usr/bin/perl -w
+##
+## simple script to make AO-style log file for reducing GSSR pfs data. 
+## Makes many assumptions and is not well tested.
+#
+use strict;
+
+use DateTime::Format::Strptime;
+use DateTime;
+use File::Spec qw(curdir splitdir);
+use Getopt::Std;
+
+our $opt_e;
+our $opt_c = 255;
+our $opt_b;
+our $opt_d;
+our $opt_t;
+our $opt_O;
+
+my $ASToff = DateTime::Duration->new(hours =>-4);
+my $OPSfile;
+
+getopts ("e:c:b:d:t:O:");
+
+if (! defined($opt_O)) { die "OPS file required\n"; } else {
+	$OPSfile = $opt_O;
+}
+
+my $codelen = 255;
+if (defined($opt_c)) {
+	$codelen = $opt_c;
+}
+
+my $baudlen = 0.125;
+if (defined($opt_b)) {
+	$baudlen = $opt_b;
+}
+
+my $txoff = 0;
+if (defined($opt_t)) {
+	$txoff = $opt_t;
+}
+
+my $wd = File::Spec->rel2abs(File::Spec->curdir());
+my @dirs = File::Spec->splitdir($wd);
+$wd = $dirs[-1];
+
+my $strp1 = DateTime::Format::Strptime->new(
+    pattern   => '%y_%j',
+    locale    => 'en_US',
+    time_zone => 'UTC',
+);
+my $strp2 = DateTime::Format::Strptime->new(
+    pattern   => ' %a %b %d %T %Y',
+    locale    => 'en_US',
+    time_zone => 'America/Puerto_Rico',
+);
+
+
+if (defined($opt_d)) {
+# use argument instead of directory name
+	$wd = $opt_d;
+}
+my $dt = $strp1->parse_datetime($wd) + $ASToff;
+
+my $datestring = $strp2 -> format_datetime($dt);
+
+#sbinit logstart .................................
+# Sun May 19 00:02:43 2002
+print STDOUT "sbinit logstart .................................\n";
+print STDOUT "$datestring\n";
+print STDOUT "baud = $baudlen\n";
+print STDOUT "code = $codelen\n";
+
+open (OPSFILE, $OPSfile) || die;
+
+my $rxstart;
+my $rxstop;
+my $exp;
+my $ephemfile;
+
+my $hour;
+my $min;
+my $sec;
+my $onscan;
+
+
+		print STDOUT "tx cycle.. up:00:00:00 (0) down:00:00:01 (1)\n";
+
+LOGLOO: while (<OPSFILE>) {
+	chomp;
+
+	if(/Ephemeris file: (.+)/) {
+		print STDOUT "ephname = $1\n";
+	}
+	
+	if(/ Configuration: BPC\((\d+),(\d+)\)_([0-9.]+)_/) {
+		$codelen = $1 - 1;
+		$baudlen = $3;
+		print STDOUT "baud = $baudlen\n";
+		print STDOUT "code = $codelen\n";
+	}
+	if (/-start (\d+),(\d+),(\d+) -secs (\d+)/) {
+		$hour = $1;
+		$hour -= 4;
+		$min = $2;
+		$sec = $3;
+		$exp = $4;
+		if ($hour < 0) {$hour += 24;}
+		$rxstart = $hour * 3600 + $min * 60 + $sec;
+		printf STDOUT "rx cycle.. up:%2d:%2.2d:%2.2d ($rxstart)", $hour,$min,$sec;
+		$onscan = sprintf("rx on scan: 1 %2d:%2.2d:%2.2d\n", $hour,$min,$sec);
+		$rxstop = $rxstart + $exp;
+		if ($rxstop >= 86400) {$rxstop -= 86400;}
+		$sec = $sec + $exp;
+		while ($sec > 59) {
+			$sec -= 60;
+			$min ++;
+		}
+		while ($min > 59) {
+			$min -= 60;
+			$hour++;
+		}
+		if ($hour >= 24) {$hour -= 24;}
+		printf STDOUT " down:%2d:%2.2d:%2.2d ($rxstop)\n", $hour,$min,$sec;
+		print STDOUT $onscan;
+	}
+
+
+}
+
+
+#tx cycle.. up: 0:08:56 (536) down: 0:17:18 (1038)
+#rx cycle.. up: 0:17:25 (1045) down: 0:25:49 (1549)
+#phase:4427 fracBdUsecs:0.513
+#rx on scan: 213900001  0:17:25
+
+
+
