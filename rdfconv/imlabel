@@ -1,50 +1,96 @@
 #!/usr/bin/perl -w
 #
-#use Text::CSV;
 use Getopt::Std qw(getopts);
 use File::Spec;
-use strict;
-use warnings;
+use Astro::FITS::Header;
+use Astro::FITS::Header::CFITSIO qw( :longnames );
+use DateTime::Format::Strptime;
+use DateTime;
+use POSIX;
+#use strict;
+#use warnings;
 
 # For the cheezy csv parser
-my $sep = ',';
-my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
-
 my $file;
 my $lcfile;
-our ($opt_t, $opt_h, $opt_L, $opt_S);
+our ($opt_B,$opt_t,$opt_f, $opt_h, $opt_L, $opt_O, $opt_S, $opt_E, $opt_T, $opt_V);
 our $tfh;
 my $obssysfile;
+my $editor;
+my $orcid;
+my $ttype;
+my $version;
+my $bookmark;
+my $header;
+my $txfreq;
+my $date;
+my $dateP = DateTime::Format::Strptime->new(
+  pattern   => '%FT%T',
+  locale    => 'en_US',
+  time_zone => 'UTC',
+);
 
-getopts('t:L:hS:');
+
+getopts('B:t:L:hS:E:O:V:');
 
 if ($opt_h) {
- print STDERR <<EOT;
-Usage: imlabel -L bundlelid -O DOI [-t template] [-S obssysfile] [-h] file.fits [file.fits ...]
+  print STDERR <<EOT;
+Usage: imlabel -L bundlelid -E editor -O orcid [-t template] [-S obssysfile] [-T targettype] [-h] file.fits [file.fits ...]
     -L:  LID for bundle, to be prepended onto the LIDs (required)
     -t:  Use template as a template for the xml. Default is internal template
     -S:  File to contain Observing System xml
+    -E:  Editor (required: Use full name with spaces)
+    -O:  Editor ORCID (required)
+    -T:  Targettype (default Asteroid)
+    -B:  Observing system Bookmark (default AO TX;AO RX;AO RI)
+    -V:  Version (default 1.0)
+    -f:  Frequency (default 2380000000)
     -h:  Print this message.
 EOT
- exit;
+  exit;
 }
 if ($opt_t) {
- open($tfh, "<", $opt_t) || die;
+  open($tfh, "<", $opt_t) || die;
 } else {
- open($tfh, "<", gettemplate()) || die;
+  open($tfh, "<", gettemplate()) || die;
 }
-#my $doi;
-#if($opt_O) {
-#  $doi = $opt_O;
-#} else {
-#  die "Must provide doi";
-#}
 my $bundlelid;
 if($opt_L) {
   $bundlelid = $opt_L;
 } else {
   die "Must provide bundle lid";
 }
+if($opt_E) {
+  $editor = $opt_E;
+} else {
+  die "Must provide editor";
+}
+if ($opt_O) {
+  $orcid = $opt_O;
+} else {
+  die "must provide orcid";
+}
+if ($opt_T) {
+  $ttype = $opt_T;
+} else {
+  $ttype = "Asteroid";
+}
+if($opt_B) {
+  $bookmark = $opt_B;
+} else {
+  $bookmark="AO TX;AO RX;AO RI";
+}
+if ($opt_V) {
+  $version = $opt_V;
+} else {
+  $version = "1.0";
+}
+if ($opt_f) {
+  $txfreq = $opt_f;
+} else {
+  $txfreq = 2380000000.0;
+}
+
 #my $invest;
 #if($opt_I) {
 #$invest = $opt_I;
@@ -53,27 +99,20 @@ if($opt_L) {
 #}
 if($opt_S) {
   $obssysfile = $opt_S;
+} else {
+  $obssysfile = "obssys";
 }
-foreach $file (@ARGV) {
- my %replace;
-# $replace{'XXXDOIXXX'} = $doi;
- open(my $fh, "< $file") || die;
- my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
- my $author = '';
- my $editor = '';
- my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$bookmark,$obssysstring);
- my ($ncols,$version,$ttype,$rdffile,$xmlname);
- my $writepdsversion;
- my $bdata = 0;
- my $tell = 0;
- my $ndata = 0;
- my $ondata = 0;
- my $onlabel = 1;
- my $onheader = 1;
 # This script is Imaging.
- my $moreRadar = '          <radar:observation_purpose>Range-Doppler</radar:observation_purpose>
+my $moreRadar = '          <radar:observation_purpose>Range-Doppler</radar:observation_purpose>
 ';
- my $txprops = '';
+foreach $file (@ARGV) {
+  my %replace;
+  my ($col,$dirpath,$filename) = File::Spec->splitpath($file);
+  my ($cdate,$start,$lcstart,$stopt,$pname,$tname,$obssysstring);
+  my ($xmlname);
+  my $writepdsversion;
+  my $txprops = '';
+  my $targetprops = '';
 # Modulation under discussion in radar dictionary as of 02/2022. Still
 # not there 5/2025 skipping
 # my $txprops = '            <radar:Modulation>
@@ -81,145 +120,69 @@ foreach $file (@ARGV) {
 #              <radar:waveform_modulation>Uncoded</radar:waveform_modulation>
 #            </radar:Modulation>
 #';
- my $targetprops ='';
- my $rtt;
- my $txpwr;
- while (<$fh>) {
-  if (! $ondata) { # Could be lots, skip all the parsing
-   $tell = tell $fh;
-   if (/^# Keywords/){
-# Find our how many columns
-    my $count = (tr /,//);
-    $ncols = $count + 1;
-    if ($ncols != 4) {
-     print STDERR "The labels for 2-column aren't right yet, you'll need to fix them up\n";
-    }
-    $replace{'XXXNCOLS'} = $ncols;
-    next;
-   } elsif (/^RDFTags/) {
-    $btags = $tell;
-    $replace{'XXXTOFFSET'} = $btags;
-    $ontags = 1;
-    $onextra = 0;
-    $ondata = 0;
-    next;
-   } elsif (/^RDFExtra/) {
-    $bextra = $tell;
-    $replace{'XXXEOFFSET'} = $bextra;
-    $onextra = 1;
-    $ontags = 0;
-    $ondata = 0;
-    next;
-   } elsif (/^# Data/) {
-    $bdata = $tell;
-    $replace{'XXXDOFFSET'} = $bdata;
-    $ondata = 1;
-    $onheader = 0;
-    $onextra = 0;
-    $ontags = 0;
-    next;
-   } elsif (/^# Column Definitions/) {
-    $onextra = 0;
-    $ontags = 0;
-   } elsif (/^#/) {
-    next;
-   }
-  
-   if ($onheader) {
-# CSV parser stolen from stackoverflow Uses re set above
-# Not very fancy but does allow commas inside quotes
-    my @cells;
-    s/\r?\n$//;
-    while(/$re/g) {
-      my $value = defined $1 ? $1 : $2;
-      push @cells, (defined $value ? $value : '');
-    }
-     if ($cells[0] =~ /Product Name/) {
-      $pname = $cells[1];
-    } elsif ($cells[0] =~ /Product Version/) {
-      $version = $cells[1];
-      $replace{'XXXVERSION'} = $version;
-    } elsif ($cells[0] =~ /Start Time/) {
-      $start = $cells[1];
-      $replace{'XXXSTART'} = $start;
-    } elsif ($cells[0] =~ /Stop Time/) {
-      $stopt = $cells[1];
-      $replace{'XXXSTOP'} = $stopt;
-    } elsif ($cells[0] =~ /Target Name/) {
-      $tname = $cells[1];
-      if ($tname =~ /(\d{4})([A-Z]{2}.*)/) {
-        $tname = "$1 $2";
-      }
-      $replace{'XXXTARGET'} = $tname;
-    } elsif ($cells[0] =~ /Target Type/) {
-      $ttype = $cells[1];
-      $replace{'XXXTTYPE'} = $ttype;
-    } elsif ($cells[0] =~ /Editor/) {
-      $editor = $cells[1];
-      $replace{'XXXEDITOR'} = $editor;
-    } elsif ($cells[0] =~ /Author/) {
-      $author = $cells[1];
-      $replace{'XXXAUTHOR'} = $author;
-    } elsif ($cells[0] =~ /Creation Date/) {
-      $cdate = $cells[1];
-      $replace{'XXXCDATE'} = $cdate;
-      $replace{'XXXYEAR'} = substr($cdate, 0, 4);
-    } elsif ($cells[0] =~ /Observing System Bookmark/) {
-      $bookmark = $cells[1];
-    } elsif ($cells[0] =~ /Original CW data file/) {
-      $rdffile = $cells[1];
-    } elsif ($cells[0] =~ /Software Version/) {
-      $writepdsversion = $cells[1];
-    } elsif ($cells[0] =~ /rttim/) {
-      $rtt = $cells[1];
-      $targetprops .= "            <radar:transmitter_to_receiver_lighttime unit=\"s\">$rtt</radar:transmitter_to_receiver_lighttime>\n";
-    } elsif ($cells[0] =~ /trpwr/) {
-      $txpwr = $cells[1] * 1000;
-      $txprops .= "            <radar:transmitter_power unit=\"W\">$txpwr</radar:transmitter_power>\n";
-      $txprops .= "            <radar:transmitter_frequency unit=\"Hz\">$txfreq</radar:tramsmitter_frequency>\n";
-    } # case
-   } # onheader
-# If we get here, and any of the counters are running, we should count them.
-   if ($ontags) { $ntags++;}
-   if ($onextra) { $nextra++;}
-  } else { # !ondata
-   $ndata++;
+  my $header = new Astro::FITS::Header::CFITSIO( File => $file, ReadOnly => 1 );
+  my $numcards = $header -> sizeof;
+# There are always a multiple of 36 cards.
+  my $offset = ceil(($numcards+1)/36) * 2880;
+  $replace{'XXXHEADERLENXXX'} = $offset;
+# DATE-OBS isn't forced to be in the correct format, but it is for all of our data.
+  $start = $header->value("DATE-OBS");
+  $replace{'XXXSTART'} = "${start}Z";
+  $date= $dateP->parse_datetime($start);
+  $exposure = $header->value("EXPOSURE");
+  $date -> add (seconds => $exposure);
+  $stopt = $dateP->format_datetime($date);
+  $replace{'XXXSTOP'} = "${stopt}Z";
+  $tname = $header->value("OBJECT");
+  if ($tname =~ /(\d{4})([A-Za-z]{2}.*)/) {
+    $tname = uc "$1 $2";
   }
- } # While fh
- close $fh;
+  $replace{'XXXTARGET'} = $tname;
+  $pname = "Radar delay-Doppler image of $tname";
+  $editor =~ /(.*)\s(\S+)$/;
+  $replace{'XXXFIRSTNAMEXXX'} = $1;
+  $replace{'XXXLASTNAMEXXX'} = $2;
+  $replace{'XXXORCIDXXX'} = $orcid;
+  $replace{'XXXTTYPE'} = $ttype;
+  $cdate = $header->value('DATE');
+  $replace{'XXXCDATE'} = $cdate;
+  $replace{'XXXYEAR'} = substr($cdate, 0, 4);
+  $replace{'XXXVERSION'} = $version;
+  $txprops .= "            <radar:transmitter_frequency unit=\"Hz\">$txfreq</radar:transmitter_frequency>\n";
 #now we have been through the file and know how many of everything there are.
- $replace{'XXXCSVFILE'} = $filename;
- $replace{'XXXPTITLE'} = "$pname $start";
- $lcfile = lc $file;
-# Remove extension per liens list
- $lcfile =~ s/.fits//;
- $lcstart = lc $start;
- ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
- $obssysstring = obssys($bookmark);
- # Need to fix up here as we will write separately
- $obssysstring =~ s/XXXBUNDLELID/$bundlelid/g;
- $replace{'XXXOBSSYSTEM'} = $obssysstring;
- $replace{'XXXTXPROPS'} = $txprops;
- $replace{'XXXTRGETPROPS'} = $targetprops;
- $replace{'XXXMORERADAR'} = $moreRadar;
- $replace{'XXXBUNDLELID'} = $bundlelid;
+  $replace{'XXXFITSFILE'} = $filename;
+  $replace{'XXXPTITLE'} = "$pname $start";
+  $lcfile = lc $file;
+# Remove extension
+  $lcfile =~ s/.fit[s]?//i;
+  $lcstart = lc $start;
+  ($replace{'XXXIDENT'} = "${lcfile} ${lcstart}") =~ s/[. :]/_/g;
+  $obssysstring = obssys($bookmark);
+# Need to fix up here as we will write separately
+  $obssysstring =~ s/XXXBUNDLELID/$bundlelid/g;
+  $replace{'XXXOBSSYSTEM'} = $obssysstring;
+  $replace{'XXXTXPROPS'} = $txprops;
+  $replace{'XXXTRGETPROPS'} = $targetprops;
+  $replace{'XXXMORERADAR'} = $moreRadar;
+  $replace{'XXXBUNDLELID'} = $bundlelid;
+  $replace{'XXXNFREQXXX'} = $header->value('NAXIS1');
+  $replace{'XXXNBINSXXX'}  = $header->value('NAXIS2');
  
 # And do the replace on the template.
- my $regex = join "|", map { quotemeta } keys %replace;
- $regex = qr/$regex/;
+  my $regex = join "|", map { quotemeta } keys %replace;
+  $regex = qr/$regex/;
 
- seek($tfh, 0, 0) || die; #rewind template
-
- ($xmlname = $file) =~ s/\.csv$/.xml/;
- open (my $xfh, "> $xmlname") || die;
- while (<$tfh>) {
-  s/($regex)/$replace{$1}/g;
-  print $xfh $_;
- }
- close $xfh;
- open ($xfh, "> $obssysfile") || die;
- print $xfh $obssysstring;
- close $xfh;
+  seek($tfh, 0, 0) || die; #rewind template
+  ($xmlname = $file) =~ s/\.fit[s]?$/.xml/i;
+  open (my $xfh, "> $xmlname") || die;
+  while (<$tfh>) {
+    s/($regex)/$replace{$1}/g;
+    print $xfh $_;
+  }
+  close $xfh;
+  open ($xfh, "> $obssysfile") || die;
+  print $xfh $obssysstring;
+  close $xfh;
 
 } # While @ARGV
 
@@ -430,24 +393,30 @@ sub gettemplate {
 #
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1N00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<?xml-model href="https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1N00_1300.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1O00_1300.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
 <Product_Observational
  xmlns="http://pds.nasa.gov/pds4/pds/v1"
  xmlns:radar="http://pds.nasa.gov/pds4/radar/v1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
- xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1N00.xsd
-                     http://pds.nasa.gov/pds4/radar/v1 https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1N00_1300.xsd">
+ xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.xsd
+                     http://pds.nasa.gov/pds4/radar/v1 https://pds.nasa.gov/pds4/radar/v1/PDS4_RADAR_1O00_1300.xsd">
   <Identification_Area>
     <logical_identifier>XXXBUNDLELID:data:XXXIDENT</logical_identifier>
     <version_id>XXXVERSION</version_id>
     <title>XXXPTITLE</title>
-    <information_model_version>1.23.0.0</information_model_version>
+    <information_model_version>1.24.0.0</information_model_version>
     <product_class>Product_Observational</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
       <description>Radar Range-Doppler image as a FITS file</description>
+      <List_Editor>
+        <Person>
+	  <given_name>XXXFIRSTNAMEXXX</given_name>
+	  <family_name>XXXLASTNAMEXXX</family_name>
+	  <person_orcid>XXXORCIDXXX</person_orcid>
+	</Person>
+      </List_Editor>
     </Citation_Information>
   </Identification_Area>
   <Observation_Area>
@@ -489,7 +458,7 @@ XXXTRGETPROPS          </radar:Target_Properties>
   </Observation_Area>
   <File_Area_Observational>
     <File>
-      <file_name>XXXCSVFILE</file_name>
+      <file_name>XXXFITSFILE</file_name>
       <local_identifier>file</local_identifier>
       <creation_date_time>XXXCDATE</creation_date_time>
     </File>
@@ -507,7 +476,6 @@ XXXTRGETPROPS          </radar:Target_Properties>
       <description>Tes Description</description>
       <Element_Array>
         <data_type>IEEE754MSBSingle</data_type>
-        <unit>DOPPLER</unit>
         <scaling_factor>1</scaling_factor>
         <value_offset>0.0</value_offset>
       </Element_Array>
