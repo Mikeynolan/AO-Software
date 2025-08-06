@@ -10,21 +10,22 @@ my $sep = ',';
 my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 
 my $file;
-our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_O, $opt_R, $opt_V);
+our ($opt_L,$opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_o, $opt_O, $opt_R, $opt_V);
 our $tfh;
-our ($title, $lid, $descr, $date, $year, $docname, $editor, $version, $doi, $refxmlfile, $refxml);
+our ($title, $lid, $descr, $date, $year, $docname, $editor, $orcid, $version, $doi, $refxmlfile, $refxml);
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
 sub main::HELP_MESSAGE {
  print STDERR <<EOT;
-Usage: collectlabel -d "Description" -T "Title" -e "Editor, T." -L "Bundlelid" -O DOI [-R refxml] [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
+Usage: collectlabel -d "Description" -T "Title" -e "Jane Q. Editor" -O ORCID -L "Bundlelid" -o DOI [-R refxml] [-I date] [-t template] [-D "Docname"] [-h] Targets dates data.csv doc.csv
          Targets is the list of targets. dates is the list of dates data.csv and docs.csv are the inventory files for the data and documentation directories, respectively.
     -T:  Set title (required)
     -L:  Set bundle LID (required)
     -d:  Set Description
-    -e:  Set editor *required* 
-    -O:  DOI *required*
+    -e:  Set editor (First M. Last) *required* 
+    -O:  Set editor ORCID *required* 
+    -o:  DOI *required*
     -R:  refxml File with references in XML format for bundle label.
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
@@ -35,7 +36,7 @@ EOT
  exit;
 }
 
-getopts('T:e:d:D:I:L:O:R:V:h');
+getopts('T:e:d:D:I:L:O:o:R:V:h');
 
 if ($opt_e) {
  $editor = $opt_e;
@@ -48,7 +49,12 @@ if ($opt_L) {
   die "Bundle LID option is required";
 }
 if ($opt_O) {
-  $doi=$opt_O;
+  $orcid=$opt_O;
+} else {
+  die "ORCID option is required";
+}
+if ($opt_o) {
+  $doi=$opt_o;
 } else {
   die "DOI option is required";
 }
@@ -191,7 +197,10 @@ $replace{'XXXPTITLEXXX'} = $title;
 $replace{'XXXLIDXXX'} = $lid;
 $replace{'XXXDOIXXX'} = $doi;
 $replace{'XXXFILENAMEXXX'} = $file;
-$replace{'XXXEDITORXXX'} = $editor;
+$editor =~ /(.*)\s(\S+)$/;
+$replace{'XXXFIRSTNAMEXXX'} = $1;
+$replace{'XXXLASTNAMEXXX'} = $2;
+$replace{'XXXORCIDXXX'} = $orcid;
 $replace{'XXXDESCRIPTIONXXX'} = $descr;
 $replace{'XXXDATEXXX'} = $date;
 $replace{'XXXSTARTXXX'} = $firstdate;
@@ -401,19 +410,27 @@ sub getbtemplate {
 #
 our $templateb = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<Product_Bundle xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd">
+<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Bundle xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.xsd">
   <Identification_Area>
     <logical_identifier>urn:nasa:pds:XXXLIDXXX</logical_identifier>
     <version_id>1.0</version_id>
     <title>XXXPTITLEXXX V1.0</title>
-    <information_model_version>1.19.0.0</information_model_version>
+    <information_model_version>1.24.0.0</information_model_version>
     <product_class>Product_Bundle</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
       <doi>XXXDOIXXX</doi>
+      <keyword>radar</keyword>
+      <keyword>asteroids</keyword>
       <description>XXXDESCRIPTIONXXX</description>
+      <List_Editor>
+       <Person>
+         <given_name>XXXFIRSTNAMEXXX</given_name>
+         <family_name>XXXLASTNAMEXXX</family_name>
+         <person_orcid>XXXORCIDXXX</person_orcid>
+       </Person>
+      </List_Editor>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
@@ -471,12 +488,22 @@ our $templatec = <<EOT;
     <logical_identifier>urn:nasa:pds:XXXLIDXXX:XXXTYPEXXX</logical_identifier>
     <version_id>1.0</version_id>
     <title>XXXPTITLEXXX XXXVERSIONXXX</title>
-    <information_model_version>1.19.0.0</information_model_version>
+    <information_model_version>1.24.0.0</information_model_version>
     <product_class>Product_Collection</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITORXXX</editor_list>
       <publication_year>XXXYEARXXX</publication_year>
-      <description>Radar Doppler spectrum converted from Radar Data Format (RDF)</description>
+      <doi>XXXDOIXXX</doi>
+      <keyword>radar</keyword>
+      <keyword>asteroids</keyword>
+      <description>Radar delay-Doppler imagery Flexible Image Transport System (FITS) files</description>
+      <description>XXXDESCRIPTIONXXX</description>
+      <List_Editor>
+       <Person>
+         <given_name>XXXFIRSTNAMEXXX</given_name>
+         <family_name>XXXLASTNAMEXXX</family_name>
+         <person_orcid>XXXORCIDXXX</person_orcid>
+       </Person>
+      </List_Editor>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
