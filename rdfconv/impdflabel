@@ -13,19 +13,20 @@ my $re = qr/(?:^|$sep)(?:"([^"]*)"|([^$sep]*))/;
 my $file;
 our ($opt_e, $opt_T, $opt_d, $opt_D, $opt_I, $opt_t, $opt_h, $opt_l, $opt_L, $opt_O,$opt_S);
 our $tfh;
-our ($title, $descr, $date, $year, $docname, $editor, $lid);
+our ($title, $descr, $date, $year, $docname, $editor, $orcid, $lid);
 our ($bundlelid,$obssys);
 
 getopts('T:t:e:d:D:I:hl:L:O:S:');
 
 if ($opt_h) {
  print STDERR <<EOT;
-Usage: cwplotlbel -d "Description" -T "Title" -e "Editor, T." -L bundlelid -l lid [-I date] [-t template] [-D "Docname"] [-S obssysfile] [-h] file.pdf
+Usage: cwplotlbel -d "Description" -T "Title" -e "John Q. Editor" -O ORCID -L bundlelid -l lid [-I date] [-t template] [-D "Docname"] [-S obssysfile] [-h] file.pdf
     -T:  Set title (required)
     -d:  Set Description (required)
-    -e:  Set editor *required* 
+    -e:  Set editor *required* Use full name
+    -O:  Set Editor ORCID *required*
     -l:  Set lid. *required*
-    -l:  Set bundle lid. *required*
+    -L:  Set bundle lid. *required*
     -I:  date - default: use today
     -D:  Docname - default: generate from file name by capitalizng and removing extension
     -t:  Use template as a template for the xml. Default is internal template
@@ -39,6 +40,11 @@ if ($opt_e) {
  $editor = $opt_e;
 } else {
  die "Editor option is required";
+}
+if ($opt_O) {
+ $orcid = $opt_O;
+} else {
+ die "ORCID option is required";
 }
 if ($opt_T) {
   $title=$opt_T;
@@ -82,7 +88,6 @@ if ($opt_S) {
 foreach $file (@ARGV) {
   my %replace;
   my $xmlname;
-	#my $editor = '';
 if ($opt_D) {
   $docname = $opt_D;
 } else {
@@ -93,7 +98,10 @@ if ($opt_D) {
  $replace{'XXXPTITLE'} = $title;
  my ($vol,$path,$fname) = File::Spec->splitpath($file);
  $replace{'XXXFILENAME'} = $fname;
- $replace{'XXXEDITOR'} = $editor;
+ $editor =~ /(.*)\s(\S+)$/;
+ $replace{'XXXFIRSTNAMEXXX'} = $1;
+ $replace{'XXXLASTNAMEXXX'} = $2;
+ $replace{'XXXORCIDXXX'} = $orcid;
  $replace{'XXXDESCRIPTION'} = $descr;
  $replace{'XXXDATE'} = $date;
  $replace{'XXXYEAR'} = $year;
@@ -125,18 +133,24 @@ sub gettemplate {
 #
 our $template3 = <<EOT;
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
-<Product_Document xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1J00.xsd">
+<?xml-model href="http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.sch" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<Product_Document xmlns="http://pds.nasa.gov/pds4/pds/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pds.nasa.gov/pds4/pds/v1 http://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1O00.xsd">
   <Identification_Area>
     <logical_identifier>XXXBUNDLELID:document:XXXLIDXXX</logical_identifier>
     <version_id>1.0</version_id>
     <title>XXXPTITLE</title>
-    <information_model_version>1.19.0.0</information_model_version>
+    <information_model_version>1.24.0.0</information_model_version>
     <product_class>Product_Document</product_class>
     <Citation_Information>
-      <editor_list>XXXEDITOR</editor_list>
       <publication_year>XXXYEAR</publication_year>
-      <description>XXXDESCRIPTION</description>
+      <description>Radar Range-Doppler image as a FITS file</description>
+      <List_Editor>
+        <Person>
+          <given_name>XXXFIRSTNAMEXXX</given_name>
+          <family_name>XXXLASTNAMEXXX</family_name>
+          <person_orcid>XXXORCIDXXX</person_orcid>
+        </Person>
+      </List_Editor>
     </Citation_Information>
   </Identification_Area>
   <Context_Area>
