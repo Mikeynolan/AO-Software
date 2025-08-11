@@ -112,6 +112,7 @@ foreach $file (@ARGV) {
   my ($xmlname);
   my $writepdsversion;
   my $txprops = '';
+  my $sampprops .= "            <radar:sample_type>Complex</radar:sample_type>\n";
   my $targetprops = '';
 # Modulation under discussion in radar dictionary as of 02/2022. Still
 # not there 5/2025 skipping
@@ -148,8 +149,21 @@ foreach $file (@ARGV) {
   $replace{'XXXCDATE'} = $cdate;
   $replace{'XXXYEAR'} = substr($cdate, 0, 4);
   $replace{'XXXVERSION'} = $version;
+  my $txpower = '';
+  my $txpowernil= " xsi:nil=\"true\" nilReason=\"missing\"";
+  $txprops .= "            <radar:transmitter_power unit=\"W\"$txpowernil>$txpower</radar:transmitter_power>\n";
   $txprops .= "            <radar:transmitter_frequency unit=\"Hz\">$txfreq</radar:transmitter_frequency>\n";
-#now we have been through the file and know how many of everything there are.
+  my $baudlen = $header -> value("BAUDLEN");
+  $txprops .= "            <radar:range_resolution_time unit = \"ns\">@{[ $baudlen * 1000 ]}</radar:range_resolution_time>\n";
+  my $pri =  $header -> value("CODELEN");
+  $pri *= $baudlen;
+  $txprops .= "            <radar:pulse_repetition_interval unit = \"ns\">@{[ $pri * 1000 ]}</radar:pulse_repetition_interval>\n";
+  $txprops .= "            <radar:pulse_repetition_frequency unit = \"Hz\">@{[ 1.e6 / $pri ]}</radar:pulse_repetition_frequency>\n";
+  $txprops .= "            <!-- radar:pulse_repetition_interval is exact, frequency is computed -->\n";
+  my $rpb = $header -> value("ROWSPBD");
+  my $sinterval = floor($baudlen * 1000 / $rpb +0.5);
+# should be safe to assume even number of ns.
+  $sampprops .= "            <radar:sample_interval unit = \"ns\">$sinterval</radar:sample_interval>\n";
   $replace{'XXXFITSFILE'} = $filename;
   $replace{'XXXPTITLE'} = "$pname $start";
   $lcfile = lc $file;
@@ -162,6 +176,7 @@ foreach $file (@ARGV) {
   $obssysstring =~ s/XXXBUNDLELID/$bundlelid/g;
   $replace{'XXXOBSSYSTEM'} = $obssysstring;
   $replace{'XXXTXPROPS'} = $txprops;
+  $replace{'XXXSAMPPROPS'} = $sampprops;
   $replace{'XXXTRGETPROPS'} = $targetprops;
   $replace{'XXXMORERADAR'} = $moreRadar;
   $replace{'XXXBUNDLELID'} = $bundlelid;
@@ -452,6 +467,8 @@ XXXMORERADAR          <radar:Transmission_Properties>
 XXXTXPROPS          </radar:Transmission_Properties>
           <radar:Target_Properties>
 XXXTRGETPROPS          </radar:Target_Properties>
+          <radar:Sampling_Properties>
+XXXSAMPPROPS          </radar:Sampling_Properties>
         </radar:Groundbased_Radar>
       </radar:Radar>
     </Discipline_Area>
@@ -473,7 +490,7 @@ XXXTRGETPROPS          </radar:Target_Properties>
       <offset unit="byte">XXXHEADERLENXXX</offset>
       <axes>2</axes>
       <axis_index_order>Last Index Fastest</axis_index_order>
-      <description>Tes Description</description>
+      <description>Delay-Doppler image array</description>
       <Element_Array>
         <data_type>IEEE754MSBSingle</data_type>
         <scaling_factor>1</scaling_factor>
