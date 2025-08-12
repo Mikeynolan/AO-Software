@@ -487,7 +487,6 @@ XXXIMAGEPROPS            </radar:Pixel_Scale>
   <File_Area_Observational>
     <File>
       <file_name>XXXFITSFILE</file_name>
-      <local_identifier>file</local_identifier>
       <creation_date_time>XXXCDATE</creation_date_time>
     </File>
     <Header>
@@ -504,8 +503,6 @@ XXXIMAGEPROPS            </radar:Pixel_Scale>
       <description>Delay-Doppler image array</description>
       <Element_Array>
         <data_type>IEEE754MSBSingle</data_type>
-        <scaling_factor>1</scaling_factor>
-        <value_offset>0.0</value_offset>
       </Element_Array>
       <Axis_Array>
         <axis_name>Doppler</axis_name>
