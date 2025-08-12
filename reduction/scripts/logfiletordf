@@ -1,0 +1,428 @@
+#!/usr/bin/perl -w
+use Time::Local;
+# use Time::gmtime;
+use POSIX;
+use Getopt::Std;
+
+our ($opt_x,$opt_H,$opt_v);
+
+#
+# $Log: logfiletordf,v $
+# Revision 1.9  2012/10/18 16:03:18  nolan
+# don't print warning if already fixed
+#
+# Revision 1.8  2012/10/18 16:01:15  nolan
+# type fixed
+#
+# Revision 1.7  2012/10/18 16:00:11  nolan
+# Added message about -H, since that's what we usually use.
+#
+# Revision 1.6  2011/04/29 13:57:19  nolan
+# changed to sys perl
+#
+# Revision 1.5  2010/10/24 16:50:37  nolan
+# Added cmagri changes for Goldstone, added a quick exit for single runs
+#
+#
+
+$RCSId ='$Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $';
+$RCSVer = '$Revision: 1.9 $';
+$RCSVer =~ s/\$//g;
+
+sub getrunlog;
+
+$usage='Usage: logfiletordf  [-K ncohavg] [-k nlooks] [-p spb] [-a] [-n] [-B countsin1sigma] [-C tsysin1sigma] [-D countsin1sigma SC] [-E tsysin1sigma SC] [-l looptime] [-b outfile] logfile object [xformlength Lag1 Lagn freq1 freqn]
+ -a means make script whether image exists or not.
+    xform, lags, and freqs must be specified when -a is used
+ -b output filename (default = stdout)
+ -B countsin1sigma (forward OC calibration information from .hdr)
+ -C tsysin1sigma (forward OC calibration information from .hdr)
+ -c "lag1o lagno freq1o freqno" pass output range to writerdf (must use quotes)
+ -D countsin1sigma (forward SC calibration information from .hdr)
+ -E tsysin1sigma (forward SC calibration information from .hdr)
+ -e use error file (for runs with ephem errors)
+ -F transmit frequency (MHz)
+ -f runnum means only do runnum (for auto scripts)
+ -H means long code processed the Harmon way
+ -i nsamples (forward info)
+ -K ncohavg inserts ncohavg in rdf header and affects exposure time computation (default = 1).
+ -k nlooks  inserts nlooks  in rdf header and affects exposure time computation (default = 1).
+ -l closed-loop time (microsec).
+ -n means don\'t transpose (because it already is).
+ -p samples per baud (default = 1).
+ -r means reverse spectra left-right (for writerdf)
+ -S means processed littleendian
+ -v means verbose
+ -x means don\'t check for "rx on scan"
+ -z zoneoff (minutes earlier than UT for date/time input: default = 240)
+ $Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $
+ This program should be merged with hdrrunnum
+';
+%months = (Jan=>0, Feb=>1, Mar=>2, Apr=>3, May=>4, Jun=>5, Jul=>6, Aug=>7, Sep=>8, Oct=>9, Nov=>10, Dec=>11);
+$SPD=86400;
+
+$baud=1;
+$delayfrac = 0;
+$caltm=0;
+$code=1;
+$ephemeris="";
+$optlong = "";
+$txoffhz=0;
+$ephdelay=0;
+$numpol=2;
+$gw=1.;
+$fracBd = 0.;
+$rxsecnoise = 0.;
+$index=0;
+$scan= ""; # gets used in a name
+$opt_r = 0;
+$opt_S = 0;
+$opt_B = 0;
+$opt_C = 0;
+$opt_c = "";
+$opt_D = 0;
+$opt_E = 0;
+$nsamples=0;
+getopts ("ab:B:c:C:D:e:E:f:F:Hi:jK:k:l:np:rSvxz:");
+
+$extraopts = "";
+if ($opt_S) {$extraopts .= " -S";}
+if ($opt_r) {$extraopts .= " -r";}
+if ($opt_F) {$extraopts .= " -N $opt_F";}
+if (defined($opt_l)) {$extraopts .= " -l $opt_l";}  # could be 0
+if ($opt_i) {$nsamples = $opt_i;}
+if ($opt_K) {$ncohavg = "$opt_K";} else {$ncohavg = 1;}
+if ($opt_k) {$nlooks = "$opt_k";} else {$nlooks = 1;}
+if ($opt_e) {
+  open (ERRINFILE, "< $opt_e");
+  @errs = <ERRINFILE>;
+  close(ERRINFILE);
+}
+if (defined($opt_z)) {$tzcorr = 60*$opt_z;} else {$tzcorr = 60*240;}
+
+if ($#ARGV < 0) {die $usage;}
+$logfile= shift @ARGV;
+$object = shift @ARGV;
+
+if (($opt_a) && ($#ARGV < 4)) {die $usage;}
+$xform = $ARGV[0];
+$lag1 = $ARGV[1];
+$lagn = $ARGV[2];
+$freq1 = $ARGV[3];
+$freqn = $ARGV[4];
+
+if (! $opt_f) {  # Get us started
+  print "#!/bin/sh\nCMD=\"writerdf\"\nEXT=\".rdf\"\nexport EXT CMD\n";
+  print "# $RCSId\n";
+} 
+
+open (LOGFILE, $logfile);
+
+$nextisdate = 0;
+$gotphase=0;
+$gotphaselast=0;
+
+LOGLOOP: while (<LOGFILE>) {
+  chomp;
+  if ($nextisdate) {
+    ($Mon, $Day, $Hour, $Min, $Sec, $Year) = /\w+ (\w+) ([ \d]{2}) ([ \d]{2}):([ \d]{2}):([ \d]{2}) (\d{4})/;
+    $Year -= 1900;
+    $setup_secs = timelocal($Sec, $Min, $Hour, $Day, $months{$Mon}, $Year);
+    $nextisdate = 0;
+    next LOGLOOP;
+  }
+  if (/tx cycle.*up:(.[0-9:]+) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $txuptime= $1;
+    my $txon = $2;
+    my $txoff = $3;
+    if ($txon >= 86400) { # Bug in software can give 24:xx:xx 
+	$txon -= 86400;
+	$txuptime =~ s/24:/00:/;
+    }
+    $txlength= $txoff - $txon;
+    while ($txlength < 0) {$txlength += $SPD;}
+  }
+  if (/rx cycle.*up:(.[0-9:]+) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $rxuptime= $1;
+    $rxlength = $3 - $2;
+    while ($rxlength < 0) {$rxlength += $SPD;}
+
+  }
+# bistatic
+  if (/tx start.*up:([ 0-9:]+) \(([0-9]*)\)/){
+    $txuptime= $1;
+    $txlength= 0;
+    while ($txlength < 0) {$txlength += $SPD;}
+  }
+  if (/rx start.*up:([0-9:]+) \(([0-9]*)\)/){
+    $rxuptime= $1;
+    $rxlength = 0;
+    while ($rxlength < 0) {$rxlength += $SPD;}
+
+  }
+  if (/closeloop.*up:(.[0-9:]+)\/(.*) down:(.[0-9:]*)/) {
+    $txlength = $3 - $1;
+    while ($txlength < 0) {$txlength += $SPD;}
+    $rxlength = $txlength;
+    $rxuptime=$2;
+    $txuptime=$2;
+  }
+  if (/^sbinit logstart/) {$nextisdate = 1;}
+  if (/^baud\s=\s*([\d.]*)/) { $baud = $1; }
+  if (/^caltm\s=\s*([\d.]*)/) {$caltm = $1; }
+  if (/^code\s=\s*([0-9.]*)/) {$code = $1; }
+  if (/^dop\s= (.*)/) {$dop = $1; }
+  if (/^ephdelay\s=\s*([-0-9.]+)/) {$ephdelay = $1; }
+  if (/^ephname\s=\s(.*)/) {$ephemeris = $1; }
+#  if (/^ephoff = ([+-]?[0-9.]*)/) {$ephoff = $1; }
+  if (/^delayfrac = ([0-9]*)/) {$delayfrac = $1; }
+  if (/^numpol = ([0-9]*)/) {$numpol = $1; }
+  if (/^rigw = ([0-9.]*)/) {$gw = $1; }
+#  if (/^ripacking = ([0-9.]*)/) {$ripacking = $1; }
+  if (/^rxsecnoise = ([0-9.]*)/) {$rxsecnoise = $1; }
+#  if (/^tmephm = ([0-9.]*)/) {$tmephm = $1; }
+  if (/^txoffhz = ([+-]?[0-9.]*)/) {$txoffhz = $1; }
+  if (/^offsets tx: ([+-]?[0-9.]*) ([+-]?[0-9.]*) rx: ([+-]?[0-9.]*) ([+-]?[0-9.]*)/) {
+    $txoffra = $1;
+    $txoffdec = $2;
+    $rxoffra = $3;
+    $rxoffdec = $4;
+  }
+  if (/fracBdUsecs:([-+\d.]*)/) {
+    $fracBd = $1;
+    $gotphase=1;
+  }
+
+  if (/fracBd:([-+\d.]*)/) {
+    $fracBd = $1;
+    $gotphase=1;
+  }
+  if (/^pncl = ([+-]?[0-9.]*)/) {
+	if($1 == 1) {
+		if ($opt_H) {
+			$optlong = "-H ";
+		} else {
+    		print STDERR "
+Default is Nolan Processing, -H for Harmon
+
+";
+			$optlong = "-L ";
+		}
+		$code = 1099511627775;
+	} else {
+		$optlong = "";
+	}
+  }
+  if (/^pncgen\s*=\s*(\S+)/) {
+	if($1 eq "pncl") {
+		if ($opt_H) {
+			$optlong = "-H ";
+		} else {
+    		print STDERR "
+Default is Nolan Processing, -H for Harmon
+
+";
+			$optlong = "-L ";
+		}
+		$code = 1099511627775;
+	} else {
+		$optlong = "";
+	}
+  }
+
+  # This one is the marker
+  if (/rx on scan/) {
+    $gotscan=1;
+  }
+
+  if($gotscan || ($gotphaselast && $opt_x)) {
+    if ($gotscan) {
+      $scan = $1;
+    }
+    $gotscan = 0; $gotphaselast=0;
+    ($hour, $min, $sec) = ($txuptime =~ /(..):(..):(..)/);
+    $txupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($txupsecs < $setup_secs) { $txupsecs += 86400};  # must have crossed midnight
+    ($hour, $min, $sec) = ($rxuptime =~ /(..):(..):(..)/);
+    $rxupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($rxupsecs < $setup_secs) { $rxupsecs += 86400};
+    #    $ISOdateTXUP = strftime("%Y-%m-%dT%T", localtime($txupsecs+$tzcorr));
+    #    $ISOdateTXDN = strftime("%Y-%m-%dT%T", localtime($txupsecs+$txlength+$tzcorr));
+    $ISOdateRXUP = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$tzcorr));
+    #    $ISOdateRXDN = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$rxlength+$tzcorr));
+    $runnum = strftime("run%Y%m%d%H%M%S", localtime($rxupsecs+$tzcorr));
+    $date = strftime("%Y%m%d", localtime($rxupsecs+$tzcorr));
+    $etime = strftime("%H%M%S", localtime($rxupsecs+$tzcorr));
+    $exposure = $rxlength - $rxsecnoise;
+    $dateL = strftime("%Y %h %d  %T", localtime($rxupsecs));
+
+
+#    print STDERR "  Receive cycle $dateL, tx at $txuptime, scan $scan.\nEnter Power: ";
+    if ($opt_v) {print STDERR "  Receive cycle $dateL, tx at $txuptime, scan $scan.\n";}
+#    $power = <STDIN>;
+#    if (! $power) {exit};
+#    chomp $power;
+#    print STDERR "Enter comments (blank to finish):\n";
+#    @comments=();
+#    do {
+#      $line = <STDIN>;
+#      if (!$line) {exit};
+#      chomp $line;
+#      if ($line) {
+#	push @comments, $line;
+#      }
+#    } while $line;
+#    
+
+    if ($opt_p) {
+      $spb = $opt_p;
+    } else {
+      $spb = 1;
+    }
+    if ($opt_b) {
+      $fname = "$opt_b";
+      open (HDR, ">> ".$fname) || (die "Couldn't open outfile $fname");
+    } else {
+      $fname = "$scan";
+      open (HDR, ">&STDOUT");
+    }
+    print HDR "Receive cycle at $ISOdateRXUP ($dateL local) for $exposure s.\n";
+    if ($scan) {
+      print HDR "Scan number $scan.\n";
+    }
+    if ($rxsecnoise || $caltm) {print HDR "$rxsecnoise seconds of noise after scan.  Last $caltm were cal.\n";}
+    print HDR "TX offset: $txoffhz.\n";
+
+    $delay = ($ephdelay);
+    if ($opt_e) { 
+      $delay -= ($errs[$index]);
+    }
+    $jitname = $runnum . ".jit";
+    if (-s $jitname) { # If the file is there, use it.
+      print HDR "Including jitter file $jitname\n";
+      $jitteropt = " -j $jitname ";
+    } else {
+      $jitteropt = "";
+    }
+    $delay *= $spb;
+    print HDR "Ephdelay (baud): $ephdelay.  Ephdelay (bins): $delay";
+    if ($opt_l) {print HDR " (also $opt_l us closed-loop delay)";}
+    if ($opt_e) {print HDR " (includes $errs[$index] baud extra undelay)";}
+    print HDR "\n";
+    if ($dop) {
+      print HDR "Doppler shift on $dop\n";
+    }
+    print HDR "Ephemeris: $ephemeris\n";
+    if ($power) {
+      print HDR "Power: $power\n";
+    }
+    
+    if ($txoffra) {
+      print HDR "Pointing offsets: TX: $txoffra $txoffdec, RX: $rxoffra $rxoffdec\n";
+    }
+
+	if ($optlong) {print HDR " Long code *2^40\n";}
+      
+    if (@comments) {
+      print HDR "Comments: ", shift(@comments), "\n";
+      foreach (@comments) {
+	print HDR "    -->   $_\n";
+      }
+    }
+    close (HDR);
+
+$caloptsoc = "";
+$caloptssc = "";
+if ($opt_B) {$caloptsoc .= " -B $opt_B";}
+if ($opt_C) {$caloptsoc .= " -C $opt_C";}
+if ($opt_D) {$caloptssc .= " -B $opt_D";}
+if ($opt_E) {$caloptssc .= " -C $opt_E";}
+
+    if (( -s "$runnum.im" || (-s "$runnum.trn" && $opt_n) || $opt_a ) && (!defined($opt_f) || $opt_f eq $runnum)) {
+      if (! $opt_a) {getrunlog();}
+      $fsize = $freqn - $freq1 + 1;
+      $lsize = $lagn - $lag1 + 1;
+      if ((! $opt_a) && ($nsamples > 0) ) {
+	if ($xform < $nsamples) {
+	  $exposure = $xform*$nlooks*$ncohavg * $samptime; # we don't always use them all
+	} else {
+	  $exposure = $nsamples * $samptime; # but if it's bigger, there are 0s
+	}
+      }
+      if ($freq1 + $freqn < -3) { $reversed = 1;} else {$reversed = 0;}
+      if ($opt_n) {
+	print "/bin/rm -f $runnum.trn ; ln -s $runnum.im $runnum.trn\n";
+      } else {
+	print "if [ -s $runnum.im ] ; then \n trnmatrix -b 4 -r $fsize -c $lsize < $runnum.im > $runnum.trn\nfi\n";
+      }
+
+if ($delayfrac) {
+  $delayfracout = "-F";
+} else {
+  $delayfracout = "";
+}
+    print "if [ -s $runnum.trn ] ; then \n \$CMD $jitteropt $optlong -i $nsamples -P OC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptsoc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trn $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum\$EXT\n";
+if (! $opt_n) {print " rm $runnum.trn\n";}
+print "fi\n";
+    }
+    if(( -s "$runnum.imsc" || (-s "$runnum.trnsc" && $opt_n) || $opt_a ) && ( !defined($opt_f) || $opt_f eq $runnum)){
+      if (! $opt_a) {getrunlog(1);}
+      $fsize = $freqn - $freq1 + 1;
+      $lsize = $lagn - $lag1 + 1;
+      if ($freq1 + $freqn < -3) { $reversed = 1;} else {$reversed = 0;}
+      if ($opt_n) {
+	print "/bin/rm -f $runnum.trnsc ; ln -s $runnum.imsc $runnum.trnsc\n";
+      } else {
+	print "if [ -s $runnum.imsc ] ; then\n trnmatrix -b 4 -r $fsize -c $lsize < $runnum.imsc > $runnum.trnsc\nfi\n";
+      }
+      print "if [ -s $runnum.trnsc ] ; then\n \$CMD $jitteropt $optlong -i $nsamples -P SC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptssc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trnsc $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum.sc\$EXT\n";
+if (! $opt_n) {print " rm $runnum.trnsc\n";}
+print "fi\n";
+    }
+    if (defined($opt_f) && ($opt_f eq $runnum)) { # We got it and did it, so skip the rest
+      exit;
+    }
+    $index++;
+  }
+  if ($gotphase) {
+    $gotphase = 0;
+    $gotphaselast=1;
+  }
+}
+
+sub getrunlog {
+
+  my $issc;
+  my $RUNLOG;
+  my $tsys;
+  my $sig;
+
+  if ($#_ < 0) {
+    $RUNLOG = "$runnum.log";
+  } else {
+    $RUNLOG = "$runnum.logsc";
+  }
+  open (RUNLOG, $RUNLOG) || die "Couldn't open logfile $RUNLOG and -a not specified\n";
+  while (<RUNLOG>) {
+    if (/^lag1: *(\d+)/) {$lag1 = $1;}
+    if (/^scaling to sigmas using mean[ ]*(\S+) and sigma[ ]*(\S+)/) {
+      $sig = $2;
+      $tsys = $1 / $2;
+      if( $#_ < 0) {
+	$caloptsoc = "-B $sig -C $tsys";
+      } else {
+	$caloptssc = "-B $sig -C $tsys";
+      }
+    }
+    if (/^lagn: *(\d+)/) {$lagn = $1;}
+    if (/^f1: *([-+\d]+)/) {$freq1 = $1;}
+    if (/^fn: *([-+\d]+)/) {$freqn = $1;}
+    if (/^fft: *(\d+)/) {$xform = $1;}
+    if (/^ncoh: *(\d+)/) {$ncohavg = $1;}
+    if (/^nlooks: *(\d+)/) {$nlooks = $1;}
+    if (/^samp: *(\S+)/) {$samptime = $1;}
+    if (/^nsamples: *(\d+)/) {$nsamples = $1;}
+
+  }
+  close RUNLOG;
+}
