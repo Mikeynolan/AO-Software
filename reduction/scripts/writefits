@@ -145,7 +145,7 @@ $doy++;
 our ($opt_A,$opt_a,$opt_B,$opt_b,$opt_C,$opt_c,$opt_D,$opt_d,$opt_E,$opt_e);
 our ($opt_F,$opt_f,$opt_H,$opt_h,$opt_i,$opt_J,$opt_j,$opt_k,$opt_L,$opt_l);
 our ($opt_m,$opt_N,$opt_O,$opt_o,$opt_P,$opt_p,$opt_R,$opt_r,$opt_S,$opt_s,$opt_T,$opt_t,$opt_1,$opt_2);
-our($opt_X,$opt_z,$opt_);
+our($opt_x,$opt_X,$opt_z,$opt_);
 getopts('A:a:B:b:C:c:D:d:E:e:Ff:Hhi:j:Jk:Ll:m:N:O:o:p:P:R:rSs:t:T:X:z:1:2:');
 
 if(defined($opt_h)) {
@@ -191,6 +191,7 @@ Options are:
 -j file (file containing EPH_row corrections)
 -J (replace extension on input file to get jitter file)
 -N tx-frequency (MHz) (default = 2380)
+-x transmitpower (kW)
 ";
   die $hstr;
 }
@@ -464,6 +465,9 @@ if ($makefits) {
   $fptr->update_key(TDOUBLE, "JDSTART", sprintf("%16.8f", $jdstart), "RX start Julian date - nearest exact UTC second", $statp);
   $fptr->update_key(TDOUBLE, "JDMEAN", sprintf("%16.8f", $jdmean), "mid-RX Julian date", $statp);
   $fptr->update_key(TDOUBLE, "JDEND", sprintf("%16.8f", $jdend), "RX end Julian date", $statp);
+  if ($opt_x) {
+    $fptr->update_key(TINT, "TXPOWER", $opt_x, "[kW] Transmit power", $statp);
+  }
 }
 
 my @header=(
@@ -590,6 +594,9 @@ push(@trailer,
      "d       JDMEAN " . sprintf("%13.5f", $jdmean),
      "d       JDEND " . sprintf("%13.5f", $jdend)
     );
+if($opt_x) {
+  push(@trailer, "i       TXPOWER $opt_x #Transmit power (kW)");
+}
 
 if(defined($opt_O)) {
   push(@trailer, "# Time offset of $opt_O seconds applied in writerdf");

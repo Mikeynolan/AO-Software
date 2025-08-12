@@ -25,13 +25,13 @@ our ($opt_x,$opt_H,$opt_v);
 #
 #
 
-$RCSId ='$Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $';
-$RCSVer = '$Revision: 1.9 $';
+my $RCSId ='$Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $';
+my $RCSVer = '$Revision: 1.9 $';
 $RCSVer =~ s/\$//g;
 
 sub getrunlog;
 
-$usage='Usage: logfiletordf  [-K ncohavg] [-k nlooks] [-p spb] [-a] [-n] [-B countsin1sigma] [-C tsysin1sigma] [-D countsin1sigma SC] [-E tsysin1sigma SC] [-l looptime] [-b outfile] logfile object [xformlength Lag1 Lagn freq1 freqn]
+my $usage='Usage: logfiletordf  [-K ncohavg] [-k nlooks] [-p spb] [-a] [-n] [-B countsin1sigma] [-C tsysin1sigma] [-D countsin1sigma SC] [-E tsysin1sigma SC] [-l looptime] [-b outfile] [-t] [-T power] logfile object [xformlength Lag1 Lagn freq1 freqn]
  -a means make script whether image exists or not.
     xform, lags, and freqs must be specified when -a is used
  -b output filename (default = stdout)
@@ -52,40 +52,44 @@ $usage='Usage: logfiletordf  [-K ncohavg] [-k nlooks] [-p spb] [-a] [-n] [-B cou
  -p samples per baud (default = 1).
  -r means reverse spectra left-right (for writerdf)
  -S means processed littleendian
+ -t means get tranmit power using txpower
+ -t txpower set transmit power to txpower
  -v means verbose
  -x means don\'t check for "rx on scan"
  -z zoneoff (minutes earlier than UT for date/time input: default = 240)
  $Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $
  This program should be merged with hdrrunnum
 ';
-%months = (Jan=>0, Feb=>1, Mar=>2, Apr=>3, May=>4, Jun=>5, Jul=>6, Aug=>7, Sep=>8, Oct=>9, Nov=>10, Dec=>11);
-$SPD=86400;
+my %months = (Jan=>0, Feb=>1, Mar=>2, Apr=>3, May=>4, Jun=>5, Jul=>6, Aug=>7, Sep=>8, Oct=>9, Nov=>10, Dec=>11);
+my $SPD=86400;
 
-$baud=1;
-$delayfrac = 0;
-$caltm=0;
-$code=1;
-$ephemeris="";
-$optlong = "";
-$txoffhz=0;
-$ephdelay=0;
-$numpol=2;
-$gw=1.;
-$fracBd = 0.;
-$rxsecnoise = 0.;
-$index=0;
-$scan= ""; # gets used in a name
-$opt_r = 0;
-$opt_S = 0;
-$opt_B = 0;
-$opt_C = 0;
-$opt_c = "";
-$opt_D = 0;
-$opt_E = 0;
-$nsamples=0;
-getopts ("ab:B:c:C:D:e:E:f:F:Hi:jK:k:l:np:rSvxz:");
+my $baud=1;
+my $delayfrac = 0;
+my $caltm=0;
+my $code=1;
+my $ephemeris="";
+my $optlong = "";
+my $txoffhz=0;
+my $ephdelay=0;
+my $numpol=2;
+my $gw=1.;
+my $fracBd = 0.;
+my $rxsecnoise = 0.;
+my $index=0;
+my $scan= ""; # gets used in a name
+our $opt_r = 0;
+our $opt_S = 0;
+our $opt_B = 0;
+our $opt_C = 0;
+our $opt_c = "";
+our $opt_D = 0;
+our $opt_E = 0;
+our($opt_a, $opt_b,$opt_e,$opt_f,$opt_F,$opt_i,$opt_j);
+our($opt_K,$opt_k,$opt_l,$opt_p,$opt_t,$opt_T,$opt_z);
+my $nsamples=0;
+getopts ("ab:B:c:C:D:e:E:f:F:Hi:jK:k:l:np:rStT:vxz:");
 
-$extraopts = "";
+my $extraopts = "";
 if ($opt_S) {$extraopts .= " -S";}
 if ($opt_r) {$extraopts .= " -r";}
 if ($opt_F) {$extraopts .= " -N $opt_F";}
@@ -99,6 +103,16 @@ if ($opt_e) {
   close(ERRINFILE);
 }
 if (defined($opt_z)) {$tzcorr = 60*$opt_z;} else {$tzcorr = 60*240;}
+
+my $mytxpower = "";
+my $usetxpower = 0;
+my $setpower = 0;
+if ($opt_t) {
+  $usetxpower = 1;
+}
+if ($opt_T) {
+  $mytxpower = "-x $opt_T";
+}
 
 if ($#ARGV < 0) {die $usage;}
 $logfile= shift @ARGV;
@@ -246,8 +260,8 @@ Default is Nolan Processing, -H for Harmon
     ($hour, $min, $sec) = ($rxuptime =~ /(..):(..):(..)/);
     $rxupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
     while ($rxupsecs < $setup_secs) { $rxupsecs += 86400};
-    #    $ISOdateTXUP = strftime("%Y-%m-%dT%T", localtime($txupsecs+$tzcorr));
-    #    $ISOdateTXDN = strftime("%Y-%m-%dT%T", localtime($txupsecs+$txlength+$tzcorr));
+    $ISOdateTXUP = strftime("'%Y-%m-%d %T'", localtime($txupsecs+$tzcorr));
+    $ISOdateTXDN = strftime("'%Y-%m-%d %T'", localtime($txupsecs+$txlength+$tzcorr));
     $ISOdateRXUP = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$tzcorr));
     #    $ISOdateRXDN = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$rxlength+$tzcorr));
     $runnum = strftime("run%Y%m%d%H%M%S", localtime($rxupsecs+$tzcorr));
@@ -283,7 +297,6 @@ Default is Nolan Processing, -H for Harmon
       $fname = "$opt_b";
       open (HDR, ">> ".$fname) || (die "Couldn't open outfile $fname");
     } else {
-      $fname = "$scan";
       open (HDR, ">&STDOUT");
     }
     print HDR "Receive cycle at $ISOdateRXUP ($dateL local) for $exposure s.\n";
@@ -292,6 +305,23 @@ Default is Nolan Processing, -H for Harmon
     }
     if ($rxsecnoise || $caltm) {print HDR "$rxsecnoise seconds of noise after scan.  Last $caltm were cal.\n";}
     print HDR "TX offset: $txoffhz.\n";
+
+    if($usetxpower) {
+      print "\nParsing transmitter power log ...\n";
+      $txpowerout = `txpower -f $ISOdateTXUP -l $ISOdateTXDN`;  # grab txpower output for times in datafile
+      print STDERR "$txpowerout";
+
+      if ($txpowerout =~ "ERROR") { 
+	print STDERR "ERROR running txpower, try another way\n";
+	exit;
+      }  # quit chris_craft if power log is bad
+
+      if ($txpowerout =~ /is\s*([0-9]+)\s*kW/) {
+	$mytxpower = "-x $1";
+      } else {
+	undef $mytxpower;
+      }
+    }
 
     $delay = ($ephdelay);
     if ($opt_e) { 
@@ -361,7 +391,7 @@ if ($delayfrac) {
 } else {
   $delayfracout = "";
 }
-    print "if [ -s $runnum.trn ] ; then \n \$CMD $jitteropt $optlong -i $nsamples -P OC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptsoc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trn $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum\$EXT\n";
+    print "if [ -s $runnum.trn ] ; then \n \$CMD $jitteropt $optlong $mytxpower -i $nsamples -P OC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptsoc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trn $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum\$EXT\n";
 if (! $opt_n) {print " rm $runnum.trn\n";}
 print "fi\n";
     }
@@ -375,7 +405,7 @@ print "fi\n";
       } else {
 	print "if [ -s $runnum.imsc ] ; then\n trnmatrix -b 4 -r $fsize -c $lsize < $runnum.imsc > $runnum.trnsc\nfi\n";
       }
-      print "if [ -s $runnum.trnsc ] ; then\n \$CMD $jitteropt $optlong -i $nsamples -P SC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptssc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trnsc $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum.sc\$EXT\n";
+      print "if [ -s $runnum.trnsc ] ; then\n \$CMD $jitteropt $optlong $mytxpower -i $nsamples -P SC -a $ncohavg -k $nlooks -p $spb -E $ephemeris $extraopts $caloptssc -D $date $delayfracout -f $fracBd -T $etime -e $exposure -b $baud -c $code -t $xform -m $delay -o $txoffhz $runnum.trnsc $freq1 $freqn $lag1 $lagn \"$object\" $opt_c > $runnum.sc\$EXT\n";
 if (! $opt_n) {print " rm $runnum.trnsc\n";}
 print "fi\n";
     }
