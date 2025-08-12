@@ -1,0 +1,874 @@
+#!/usr/bin/perl -w
+ 
+# $Id: writefits,v 1.29 2020/05/27 01:33:46 nolan Exp $
+ 
+# 
+# $Log: writefits,v $
+# Revision 1.29  2020/05/27 01:33:46  nolan
+# Added digits and comments to JDSTART etc.
+#
+# Revision 1.28  2017/01/11 18:29:55  nolan
+# Changed SPB and RPB to SAMPPPD and ROWSPBD to avoid conflicts. Need to see if this affects SHAPE
+#
+# Revision 1.27  2014/02/18 21:25:46  nolan
+# When flipped, need to account for moved offset in -A
+#
+# Revision 1.26  2013/10/03 14:49:36  nolan
+# Added centering options (-A, -1, -2), which needed a lot of rearrangement t
+# have the information when it was needed. Also some cosmetic changes and
+# use strict, which made for a lot of small changes.
+#
+# Revision 1.25  2011/11/21 14:25:35  nolan
+# changed to ll pointers (didn't help)
+# Added $baud in default cltime
+# There's an issue with eph_row in vignetted long code different from
+# short code. Not solved.
+#
+# Revision 1.24  2011/10/19 20:48:28  nolan
+# Byteorder check now works for words longer than 4
+#
+# Revision 1.23  2011/04/29 13:58:22  nolan
+# changed to sys perl
+#
+# Revision 1.22  2010/10/24 16:16:22  nolan
+# Canges to allow Goldstone data by Chris Magri
+#
+# Revision 1.21  2007/07/31 21:11:27  nolan
+# -J now gets jitter by changing extension (overrides -j)
+#
+# Revision 1.20  2007/07/27 21:43:31  nolan
+# Added reading a file for arbitrary EPH_ROW corrections (used
+# for the interpolation jitter).
+#
+# Revision 1.19  2007/07/23 18:33:26  nolan
+# Added time offset option (for partial runs, e.g., for bistatic).
+#
+# Revision 1.18  2006/06/21 20:02:37  nolan
+# Include unaveraged bw as well.
+#
+# Revision 1.17  2006/06/21 19:53:58  nolan
+# Added coherent average
+#
+# Revision 1.16  2005/11/17 15:27:40  nolan
+# Actually, I didn't fix either one...
+#
+# Revision 1.15  2005/11/17 15:24:23  nolan
+# in 1.13, I only fixed the JD for fits, not rdf. (%lf vs %f)
+#
+# Revision 1.14  2005/07/26 20:33:08  nolan
+# Assume 4.5 us has same clt as 4 us
+#
+# Revision 1.13  2005/07/25 20:45:06  nolan
+# Merged Chris Magri's changes to allow strides, some calibration
+# information, and fix JD routine
+#
+# Revision 1.12  2005/07/25 20:03:44  nolan
+# Fixed error in EPH_ROW for fracbaud correction
+# Add additional byteorder check
+#
+# Revision 1.11  2004/11/22 12:24:03  nolan
+# changed perl path
+#
+# Revision 1.10  2004/10/04 20:46:59  nolan
+# moved comment about fractional baud
+#
+# Revision 1.9  2004/05/03 20:49:38  nolan
+# typo
+#
+# Revision 1.8  2004/05/02 22:41:35  nolan
+# I think my spb change was wrong, and removed it.
+#
+# Revision 1.7  2004/04/21 17:12:44  nolan
+# Added FFT and fill info
+# added some comments on the mid-time
+# Added date to the rdf files
+#
+# Revision 1.6  2004/04/19 19:46:40  nolan
+# Fiex
+#
+# Revision 1.5  2004/04/19 19:09:30  nolan
+# More changes of comments
+# Include spb in bw computation (may be wrong sometimes)
+#
+# Revision 1.4  2004/04/19 18:55:47  nolan
+# Made fits actually reverse the frequencies, rather than just the axis
+# Added baseline subtraction info
+# Added option to reverse endianness
+# Updated some comments and typos
+#
+# Revision 1.3  2003/10/24 20:41:31  nolan
+# Merged with C. Magri version.
+#
+# Revision 1.2  2003/10/23 21:00:29  nolan
+# Works.  Merged with writerdf
+#
+# Revision 1.1  2003/05/07 20:24:24  nolan
+# Initial revision
+#
+#
+ 
+use strict;
+use Astro::FITS::CFITSIO qw( :longnames );
+use Astro::FITS::CFITSIO qw( :constants );
+use POSIX;
+use Config;
+use constant Clight => 299792458.0;
+
+my $makerdf=0;
+my $makefits=0;
+my $progname;
+
+if ($0 =~ /writerdf/) {
+  $makerdf = 1;
+  $progname = "writerdf";
+} elsif ($0 =~ /writefits/) {
+  $makefits = 1;
+  $progname = "writefits";
+}
+
+use Getopt::Std;
+require 'flush.pl';
+my $RCSId ='$Id: writefits,v 1.29 2020/05/27 01:33:46 nolan Exp $';
+my $RCSVer = '$Revision: 1.29 $';
+$RCSVer =~ s/\$//g;
+my $ffname = '-';
+my @Monthdays=(0,31,28,31,30,31,30,31,31,30,31,30,31);
+my $SecPerDay=86400;
+my ($sec,$min,$hour,$mday,$mon,$year,$doy);
+{
+    my ($isdst, $wday);
+    ($sec,$min,$hour,$mday,$mon,$year,$wday,$doy,$isdst) = localtime();
+}
+$mon++;
+my $day = $mday;
+$doy++;
+our ($opt_A,$opt_a,$opt_B,$opt_b,$opt_C,$opt_c,$opt_D,$opt_d,$opt_E,$opt_e);
+our ($opt_F,$opt_f,$opt_H,$opt_h,$opt_i,$opt_J,$opt_j,$opt_k,$opt_L,$opt_l);
+our ($opt_m,$opt_N,$opt_O,$opt_o,$opt_P,$opt_p,$opt_R,$opt_r,$opt_S,$opt_s,$opt_T,$opt_t,$opt_1,$opt_2);
+our($opt_X,$opt_z,$opt_);
+getopts('A:a:B:b:C:c:D:d:E:e:Ff:Hhi:j:Jk:Ll:m:N:O:o:p:P:R:rSs:t:T:X:z:1:2:');
+
+if(defined($opt_h)) {
+my  $hstr =  "
+Usage: $progname [options] datafile firstfreq_input  lastfreq_input  firstlag_input  lastlag_input [object [firstfreq_output lastfreq_output firstlag_output lastlag_output] ]
+
+If datafile = '-' then stdin is used
+Lags (image rows) are counted from 0; frequency bins (image columns) are counted L->R such that DC = bin 0
+
+If output data limits are omitted, the entire input image is converted to rdf format
+Options are:
+-h this message
+-A width  Center (width) output channels on offset rather than specifying.
+-1, -2 first and last range bins relative to input window (1-based)
+-D calendar date ([yy]yymmdd)
+-d year/doy date ([yy]yyddd)
+-T time (hhmmss)
+-s time (# seconds after midnight)
+-z zoneoff (minutes earlier than UT for date/time input: default = 0)
+-e integration time (sec)
+-b baudlength (microsec)
+-p samples per baud (default=1)
+-R image rows per baud (default=spb)
+-F (fractional baud correction performed)
+-f fracbaud (microsec)
+-l closed-loop time (microsec)
+-O seconds time offset (can be used for partial runs)
+-o tx-offset (Hz)
+-X tx-power (kW)
+-L (long code, Nolan reduction)
+-H (long code, Harmon reduction)
+-c codelength
+-m marker (lag corresponding to ephemeris delay; 0-based)
+-t freq-transformlength
+-k nlooks
+-i input sample
+-r (reverse freq in output)
+-a coherent average
+-E ephemerisfilename
+-P {OC|SC}
+-S (data are little-endian)
+-C tsyspersig (fraction of Tsys in 1 sigma)\n\t\t[-B counts (raw counts in 1 sigma)
+-j file (file containing EPH_row corrections)
+-J (replace extension on input file to get jitter file)
+-N tx-frequency (MHz) (default = 2380)
+";
+  die $hstr;
+}
+
+# In order to have computed image centering, we need some things
+# before we know the size. In particular the channel spacing.
+my $baud;
+if(defined($opt_b)) {
+  $baud = $opt_b+0;
+} else {
+  $baud = 1.;
+}
+my $spb;
+if(defined($opt_p)) { $spb = $opt_p; } else {$spb = 1;}
+
+my $codelen;
+if(defined($opt_c)) {
+  $codelen = $opt_c;
+} elsif (defined($opt_L) || defined($opt_H)) {
+  $codelen = 1099511627775; # 2^40 - 1
+} else {
+  $codelen = 16383;
+}
+
+my($codemethod, $codecomment, $bw);
+if (defined($opt_L)) {
+    $codemethod = "long_mod";
+    $codecomment = "Long code, modified (Nolan) reduction";
+    $bw = 1.0e6 / ($baud / $spb);
+} elsif (defined($opt_H)) {
+    $codemethod = "long_orig";
+    $codecomment = "Long code, original (Harmon) reduction";
+    $bw = 1.0e6 / $baud;
+} else {
+    $codemethod = "short";
+    $codecomment = "Short code";
+    $bw = 1.0e6 / ($baud * $codelen);
+}
+
+my $trans;
+if(defined($opt_t)) {
+  $trans = $opt_t;
+} else {
+  $trans = 4096;
+}
+
+my $cohavg;
+if(defined($opt_a)) {
+  $cohavg = $opt_a;
+} else {
+  $cohavg = 1;
+}
+my ($codebw,$fres);
+$codebw = $bw;
+$bw = $bw / $cohavg;
+$fres = $bw / $trans;
+
+my ($offsethz,$offset);
+if(defined($opt_o)) {
+  $offsethz = $opt_o+0;
+} else {
+  $offsethz = 0.0;
+}
+$offset = $offsethz / $fres; # In bins, not Hz.
+
+my($f0,$fn,$l0,$ln,$f0_use,$fn_use,$l0_use,$ln_use);
+$f0 = $ARGV[1];
+$fn = $ARGV[2];
+$l0 = $ARGV[3];
+$ln = $ARGV[4];
+$f0_use = $f0;
+$fn_use = $fn;
+$l0_use = $l0;
+$ln_use = $ln;
+if (defined($opt_A)) {
+	my $off_use = $offset;
+	if (defined($opt_r)) {
+		$off_use = -$offset;
+	}
+    $f0_use = floor($off_use - ($opt_A / 2));
+    $fn_use = floor($off_use + ($opt_A / 2) - 1);
+    if ($f0_use < $f0) {$f0_use = $f0;}
+    if ($fn_use > $fn) {$fn_use = $fn;}
+print STDERR "Offset = $off_use, f0_use = $f0_use\n";
+}
+if (defined($opt_1)) {
+    $l0_use = $l0 + $opt_1 - 1;
+    if ($l0_use < $l0) {$l0_use = $l0;}
+    if ($l0_use > $ln) {die "First range bin $l0_use past end";}
+}
+if (defined($opt_2)) {
+    $ln_use = $l0 + $opt_2 - 1;
+    if ($ln_use > $ln) {$ln_use = $ln;}
+    if ($ln_use < $l0_use) {die "Last range bin $ln_use before first $l0_use";}
+}
+
+my $object;
+if ($#ARGV > 4) {$object = $ARGV[5];}
+
+if ($#ARGV > 8) {
+  $f0_use = $ARGV[6];
+  $fn_use = $ARGV[7];
+  $l0_use = $ARGV[8];
+  $ln_use = $ARGV[9];
+} 
+my $width = $fn - $f0 + 1;
+my $width_use = $fn_use - $f0_use + 1;
+my $fskip1 = $f0_use - $f0;
+my $fskip2 = $fn - $fn_use;
+my $height = $ln - $l0 + 1;
+my $height_use = $ln_use - $l0_use + 1;
+my $lskip1 = $l0_use - $l0;
+print STDERR "Input  image: $f0 $fn $l0 $ln height=$height width=$width\n";
+print STDERR "Output image: $f0_use $fn_use $l0_use $ln_use height=$height_use width=$width_use\n";
+
+my($statp,$fptr);
+if ($makefits) {
+  $statp = 0;
+  $fptr = Astro::FITS::CFITSIO::create_file($ffname, $statp);
+  if ($statp) {fits_report_error(*STDERR, $statp); die;}
+  $fptr->create_imgll(-32, 2, [$width_use, $height_use], $statp);
+  if ($statp) {fits_report_error(*STDERR, $statp); die;}
+}
+
+my $packstring = "l" . $width_use;
+
+if(defined($opt_D)) {
+  $year = int($opt_D / 10000);
+  $opt_D %= 10000;
+  $mon = int($opt_D / 100);
+  $opt_D %= 100;
+  $day = $opt_D;
+}
+
+if($year < 900) { $year += 1900; }
+
+$doy = $day;
+if(($mon > 2) && ($year % 4 == 0)) {$doy++;}
+
+{
+    my $m = $mon;
+    if($m > 12) {die "Year $year Month $m Day $day is out of range\n";}
+    while ($m-- > 1) {
+	$doy += $Monthdays[$m];
+    }
+}
+
+if(defined($opt_d)) {
+  $doy = $opt_d % 1000;
+  $year = int($opt_d / 1000);
+}
+
+if(defined($opt_T)) {
+  $hour = int($opt_T / 10000);
+  $opt_T %= 10000;
+  $min = int($opt_T / 100);
+  $opt_T %= 100;
+  $sec = $opt_T;
+  $opt_s = $hour * 3600 + $min * 60 + $sec;
+}
+
+my $sfm;
+# Will be true of opt_T was defined
+if(defined($opt_s)) {
+  $sfm = $opt_s;
+  $hour = int($opt_s / 3600);
+  $opt_s %= 3600;
+  $min = int($opt_s / 60);
+  $opt_s %= 60;
+  $sec = $opt_s;
+}
+
+my $zoneoff;
+if(defined($opt_z)) { $zoneoff = $opt_z; } else {$zoneoff = 0 ;}
+my $rowsperbaud;
+if(defined($opt_R)) { $rowsperbaud = $opt_R; } else {$rowsperbaud = $spb;}
+
+if (defined($opt_)) {
+  open(INFILE, "-"); # Stdin
+} else {
+  open(INFILE, $ARGV[0]) || die "Can't open input file $ARGV[0]\n";
+}
+my $exptime;
+if(defined($opt_e)) {
+  $exptime = $opt_e+0.0;
+} else {
+  $exptime = 1.;
+}
+my ($txfreq,$wavelength);
+if(defined($opt_N)) { $txfreq = $opt_N; } else {$txfreq = 2380;}
+if ($txfreq > 3000) {
+    $wavelength = sprintf( "%.8f", Clight/($txfreq*1e6));
+} else {
+    $wavelength = sprintf( "%.7f", Clight/($txfreq*1e6));
+}
+my $dstring;
+if($zoneoff != 0) {
+  if ($makefits) {
+    fits_time2str($year, $mon, $day, $hour, $min, $sec, 0, $dstring, $statp);
+    $fptr->update_key(TSTRING, "LOCALTIM", $dstring, "", $statp);
+    $fptr->update_key(TINT, "LOCALDOY", $doy, "", $statp);
+    $fptr->update_key(TINT, "LOCALSFM", $sfm, "[s]", $statp);
+  }
+}
+
+if (defined($opt_O)) {
+    $sfm += $zoneoff*60 + $opt_O;
+} else {
+    $sfm += $zoneoff*60;
+}
+
+if ($sfm > $SecPerDay) {
+  $sfm -= $SecPerDay;
+  $doy++;
+  if ($doy > (365 + ($year % 4 == 0))) {
+    $doy = 1; # year fixed up later
+  }
+  $day++;
+  if ($day > ($Monthdays[$mon] + (($mon == 2) && ($year % 4 == 0)))) {
+    $day = 1;
+    $mon++;
+    if ($mon > 12) {
+      $mon = 1;
+      $year++;
+    }
+  }
+}
+
+if ($sfm < 0) {
+  $sfm += $SecPerDay;
+  $doy--;
+  if($doy < 1) {
+    $doy = (365 + (($year-1) % 4 == 0))
+  }
+  $day--;
+  if ($day < 1) {
+    $mon--;
+    if ($mon < 1) {
+      $mon = 12;
+      $year--;
+    }
+    $day = $Monthdays[$mon] + (($mon == 2) && ($year % 4 == 0));
+  }
+}
+
+#We mangled it so much, just redo it.
+$sec = $sfm;
+$hour = int($sec / 3600);
+$sec -= $hour * 3600;
+$min  = int($sec / 60);
+$sec -= $min * 60;
+
+my $jdstart = julian($year, 1, 1) + ($doy - 1) + $sfm/86400.0;
+my $jdend = $jdstart + $exptime/86400.0;
+my $jdmean = ($jdstart + $jdend)/2;
+
+print(STDERR "$year-$mon-$day","T$hour:$min:$sec\n");
+print(STDERR "SFM: $sfm, DOY: $doy, YEAR: $year\n");
+
+if ($makefits) {
+  fits_time2str($year, $mon, $day, $hour, $min, $sec, 0, $dstring, $statp);
+  print (STDERR "DATE_OBS: $dstring\n");
+  $fptr->update_key(TSTRING, "DATE-OBS", $dstring, "UT date of RX start", $statp);
+  $fptr->write_comment("The RX start time is a reasonable approximation to the experiment", $statp);
+  $fptr->write_comment("mid-time. A more accurate mid-time is DATE-OBS + (EXPTIME-RTT)/2", $statp);
+  $fptr->write_comment("which is typically about 3s earlier", $statp);
+  $fptr->write_comment("JDSTART should be interpreted as the nearest exact UTC second", $statp);
+  $fptr->write_comment("JDMEAN and JDEND are computed quantities and not exact seconds", $statp);
+  $fptr->update_key(TINT, "DOY", $doy, "RX start Day of Year (UT January 1 = 1)", $statp);
+  $fptr->update_key(TINT, "SFM", $sfm, "[s] RX start seconds from UT midnight", $statp);
+  $fptr->update_key(TDOUBLE, "JDSTART", sprintf("%16.8f", $jdstart), "RX start Julian date - nearest exact UTC second", $statp);
+  $fptr->update_key(TDOUBLE, "JDMEAN", sprintf("%16.8f", $jdmean), "mid-RX Julian date", $statp);
+  $fptr->update_key(TDOUBLE, "JDEND", sprintf("%16.8f", $jdend), "RX end Julian date", $statp);
+}
+
+my @header=(
+	 's       Type      Float',
+	 "i       Height    $height_use # Number of range rows in image",
+	 "i       Width     $width_use # Number of Doppler columns in image",
+	 'i       Size      4',
+	 's       Machine   SPARC',
+	 's       Format    RDF_range_1',
+	);
+
+my @trailer=("");
+
+my $fracbaud;
+if(defined($opt_F)) {
+    $fracbaud = $baud; # IF we did fractional baud correction, it's always 1 baud
+} elsif(defined($opt_f)) {
+    $fracbaud = $opt_f;
+} else {
+    $fracbaud = 0.;
+}
+
+my $cltime;
+my $loopestimated=0;
+if (defined($opt_l)) {
+  $cltime = $opt_l;
+} else {
+#Light time to the center-of-curvature, measured with a ruler
+#on the blueprints.
+my $lcoc = 2.80;
+  if (defined($opt_L) || defined($opt_H)) {
+# CLTs measured by chris, reported to MCN April 2002
+	if($baud == 8 && $spb == 2) {$cltime = 4*3+$lcoc;} # 2002 Feb
+	elsif($baud == 16 && $spb == 2) {$cltime = 8*1.5+$lcoc;} # 2002 Feb
+	elsif($baud == 20 && $spb == 2) {$cltime = 10*1.5+$lcoc;} # 2000 Oct
+	elsif($baud == 40 && $spb == 2) {$cltime = 20*1.5+$lcoc;} # 2000 Oct
+	elsif($baud == 70 && $spb == 2) {$cltime = 35*1.5+$lcoc;} # 2000 Oct
+	elsif($baud == 70 && $spb == 1) {$cltime = 70+$lcoc;} # 2000 Sep 10
+	elsif($baud == 100 && $spb == 2) {$cltime = 50*1.5+$lcoc;} # 2000 Oct
+    else {
+	$cltime = 10.0 + $baud;
+    $loopestimated = 1;
+  }
+} else {
+  if(0) {;}
+  elsif($baud == 0.1) {$cltime = 7.29 + $lcoc;} # CBR from JM8 1999 Aug 09 loop tests
+  elsif($baud == 0.2 && $spb == 2) {$cltime = 7.2 + $lcoc;} # CBR from 2001Mar05 loop test
+  elsif($baud == 0.2) {$cltime = 9.8; } # RI
+  elsif($baud == 0.3) {$cltime = 10.0;}
+  elsif($baud == 0.5) {$cltime = 7.5 + $lcoc;} # RI  2003 May 24
+  elsif($baud == 2 && $spb == 2) {$cltime = 8.36*1 +$lcoc;} # 2000 Aug 28 clt
+  elsif($baud == 2 && $spb == 1) {$cltime = 4.73*2 +$lcoc;} # 2000 Aug 28 clt
+  elsif($baud == 2)  {$cltime = 4.73*2 +$lcoc;} # Assume same as 1spb
+  elsif($baud == 4 && $spb == 2) {$cltime = (4.57*2)+$lcoc;} # 2000 Jul 22 clt
+  elsif($baud == 4 && $spb == 1) {$cltime = (2.93*4)+$lcoc;} # 2000 Jul 22 clt
+  elsif($baud == 4) {$cltime = (2.93*4) +$lcoc;} # Assume same as 1spb
+  elsif($baud == 4.5 && $spb == 1) {$cltime = (2.93*4)+$lcoc;} # assumed same as 4 us.
+  elsif($baud == 8 && $spb == 2) {$cltime = (2.72*4)+$lcoc;} # 2000 Jul 22 clt
+  elsif($baud == 8 && $spb == 1) {$cltime = (1.94*8)+$lcoc;} # 2000 Jul 22 clt
+  elsif($baud == 8) {$cltime = (1.94*8) +$lcoc;} # Assume same as 1spb
+  elsif($baud == 16) {$cltime = 24 + $lcoc; }
+  elsif($baud == 40 && $spb == 2) {$cltime = (1.5 * 20)+$lcoc;} # 2000 Jan 9 clt
+  elsif($baud == 41 && $spb == 2) {$cltime = (1.5 * 20)+$lcoc;} # 2000 Jan 9 clt
+  elsif($baud == 43 && $spb == 2) {$cltime = (1.5 * 20)+$lcoc;} # 2000 Jan 9 clt
+  elsif($baud == 70) {$cltime = 70 + $lcoc; } 
+  else {
+    $cltime = 10.0 + $baud;
+    $loopestimated = 1;
+  }
+}
+}
+my $markeroff;
+if(defined($opt_m)) {
+  $markeroff = $opt_m+0;
+} else {
+  $markeroff = 50.;
+}
+
+print STDERR "markeroff orig: $markeroff ";
+$markeroff -= ($l0_use); # Subtract off vignetting
+print STDERR "after vig: $markeroff ";
+
+$markeroff += (($cltime-$fracbaud) / $baud) * $rowsperbaud;
+print STDERR "after clloop: $markeroff ";
+
+if ($makefits) {
+  if(defined($opt_r)) {
+    $fptr->write_comment("Frequency axis reversed in writefits.", $statp);
+  }
+  if(defined($opt_O)) {
+    $fptr->write_comment("Time offset of $opt_O seconds applied in writefits", $statp);
+  }
+}
+
+push(@trailer,
+     "s       DATA_TYPE PWR",
+     "#       writerdf  $RCSVer",
+     "#       RDF File Written " . strftime("%Y-%m%dT%T", gmtime()). "Z",
+     "i       FREQS     $trans # Transform length",
+     "i       CHANS     1",
+     "i       FRAMES    1",
+     "i       BINS      $codelen # Before vignetting"
+    );
+
+if (defined($object)) {
+  push(@trailer,
+       "s       OBJECT $object"
+      );
+  if ($makefits) {
+    $fptr->update_key(TSTRING, "OBJECT", $object, "Target Name", $statp);
+  }
+}
+push(@trailer,
+     "s       TIMEZONE UTC",
+     "i       YEAR $year # (UTC)",
+     "i       MONTH $mon # (UTC)",
+     "i       DAY $day # (UTC)",
+     "i       HOUR $hour # (UTC)",
+     "i       MINUTE $min",
+     "i       SECOND $sec",
+     "i       IDAY $doy # Day Of Year (UTC)",
+     "i       DTIME $sfm # Receive start time (UTC seconds)",
+     "d       JDSTART " . sprintf("%13.5f", $jdstart),
+     "d       JDMEAN " . sprintf("%13.5f", $jdmean),
+     "d       JDEND " . sprintf("%13.5f", $jdend)
+    );
+
+if(defined($opt_O)) {
+  push(@trailer, "# Time offset of $opt_O seconds applied in writerdf");
+}
+if(defined($opt_r)) {
+  push(@trailer, "# Image was L-R reversed in writerdf");
+  ($f0, $fn) = (-$fn, -$f0);
+  ($f0_use, $fn_use) = (-$fn_use, -$f0_use);
+}
+$offset = $offset - $f0_use;
+my $dc_col = $offset - $offsethz/$fres;
+my $delayres = $baud / $rowsperbaud;          # in microsec
+my $rangeres = $delayres * Clight / 2000000;  # in meters
+my ($jit,$com);
+if (defined ($opt_j) || defined ($opt_J)) {
+  if (defined ($opt_J)) {
+    if (defined($opt_)) { die "Can't get jitter file by renaming stdin" }
+    ($opt_j = $ARGV[0]) =~ s/\..*/.jit/;
+  }
+  open (JIT, "<$opt_j") || die "Couldn't open jitter file $opt_j";
+  while (<JIT>) {
+    chomp;
+    if (/^\s*#/) {next;}
+    if (/\S+/) {
+      $jit = $&;
+      ($com = $');
+      $markeroff += $jit * 1000000 / $delayres;
+      print STDERR "After jit: $markeroff ";
+      push(@trailer, "#       An additional $jit s added: $com");
+      if ($makefits) {
+	$fptr->write_comment("Additional $jit s added: $com", $statp);
+      }
+    }
+  }
+  close JIT;
+}
+
+
+push(@trailer,
+     "s       CODEMETHOD $codemethod # $codecomment",
+     "i       CODE_LEN $codelen",
+     "i       COHERENT_AVG $cohavg # number of codes coherently averaged before Doppler FFT",
+     "f       CODEBW $codebw # Bandwidth before coherent averaging (Hz)",
+     "f       BW $bw # Of original unvignetted image (Hz)",
+     "f       FRES $fres # (Hz)",
+     "f       BAUDLEN $baud # in microseconds",
+     "i       SAMPLES_PER_BAUD $spb",
+     "i       ROWS_PER_BAUD $rowsperbaud",
+     "f       DELAYUNIT $delayres # in microseconds / pixel",
+     "f       RANGEUNIT $rangeres # in meters / pixel",
+     "f       INT_TIME $exptime # Exposure time included in image (s)",
+     "f       FREQUENCY $txfreq # (MHz)",
+     "f       LAMBDA $wavelength # (m)",
+     "f       TXOFFSET $offsethz # (Hz)",
+     "#       0.0 is the center of the first pixel for EPH_ROW/EPH_COL/DC_COL",
+     "f       EPH_ROW $markeroff # row in which ephemeris range lies, 0-based",
+     "f       EPH_COL $offset # column in which ephemeris Doppler lies, 0-based",
+     "f       DC_COL $dc_col # column in which zero Doppler (DC) lies, 0-based",
+     "#       0.0 is the center of the first pixel for EPH_ROW/EPH_COL/DC_COL",
+     "f       LOOPTIME $cltime # Closed-loop time included in EPH_ROW"
+    );
+  if ($loopestimated) {
+    push(@trailer, "# Closed-loop time estimated from baud");
+  }
+
+if ($makefits) {
+  $fptr->update_key(TSTRING, "BUNIT", "sigmas", "Standard deviations of the noise power", $statp);
+  $fptr->update_key(TINT, "WCSAXES", 2, "", $statp);
+  $fptr->update_key(TSTRING, "WCSNAME", "delay-Doppler", "", $statp);
+  $fptr->update_key(TDOUBLE, "CRVAL1", 0.0, "[Hz]", $statp);
+  $fptr->update_key(TDOUBLE, "CRPIX1", $offset+1, "Center of first px is 1.0", $statp);
+  $fptr->update_key(TDOUBLE, "CDELT1", $fres, "[Hz]", $statp);
+  $fptr->update_key(TSTRING, "CUNIT1", "Hz", "", $statp);
+  $fptr->update_key(TSTRING, "CTYPE1", "DOPPLER", "Doppler Shift", $statp);
+  $fptr->update_key(TDOUBLE, "CRVAL2", 0.0, "[us]", $statp);
+  $fptr->update_key(TDOUBLE, "CRPIX2", $markeroff+1, "Center of first px is 1.0", $statp);
+  $fptr->update_key(TDOUBLE, "CDELT2", $delayres, "[us]", $statp);
+  $fptr->update_key(TSTRING, "CUNIT2", "us", "", $statp);
+  $fptr->update_key(TSTRING, "CTYPE2", "DELAY", "Round-Trip Time Delay", $statp);
+  $fptr->update_key(TDOUBLE, "PC1_1", 1.0, "", $statp);
+  $fptr->update_key(TDOUBLE, "PC1_2", 0, "", $statp);
+  $fptr->update_key(TDOUBLE, "PC2_1", 0, "", $statp);
+  $fptr->update_key(TDOUBLE, "PC2_2", 1.0, "", $statp);
+  fits_report_error(*STDERR, $statp);
+
+  $fptr->update_key(TDOUBLE, "EXPOSURE", $exptime, "[s] Receive time processed in this image", $statp);
+  $fptr->update_key(TDOUBLE, "FREQUENCY", $txfreq, "[MHz] frequency", $statp);
+  $fptr->update_key(TDOUBLE, "LAMBDA", $wavelength, "[m] wavelength", $statp);
+  $fptr->update_key(TDOUBLE, "TXOFFSET", $offsethz, "[Hz] TX offset", $statp);
+  $fptr->update_key(TDOUBLE, "CODELEN", $codelen, "", $statp);
+  $fptr->update_key(TDOUBLE, "BAUDLEN", $baud, "[us]", $statp);
+  
+  $fptr->update_key(TDOUBLE, "LOOPTIME", $cltime, "[us] Closed-loop time used in axis calculation", $statp);
+  if ($loopestimated) {$fptr->write_comment("Closed-loop time estimated from baud", $statp);}
+  $fptr->update_key(TINT, "COHAVG", $cohavg, "Number of codes coherently avgd before FFT", $statp);
+  $fptr->update_key(TDOUBLE, "CODEBW", $codebw, "[Hz] Bandwidth before coherent averaging", $statp);
+  $fptr->update_key(TDOUBLE, "BANDWIDT", $bw, "[Hz] Bandwidth of unvignetted image", $statp);
+  $fptr->update_key(TDOUBLE, "EPH_ROW", $markeroff, "Row in which ephemeris range lies, zero-based", $statp);
+  $fptr->update_key(TDOUBLE, "EPH_COL", $offset, "Column... ephemeris Doppler lies, zero-based", $statp);
+  $fptr->update_key(TDOUBLE, "DC_COL", $dc_col, "Column... zero Doppler (DC) lies, zero-based", $statp);
+  $fptr->update_key(TINT, "FFTLEN", $trans, "FFT length used in the frequency processing", $statp);
+}
+if(defined($opt_k)) {
+  if ($makefits) {
+    $fptr->update_key(TINT, "LOOKS", $opt_k, "Incoherently summed spectra", $statp);
+  }
+  push(@trailer, "i       NLOOKS $opt_k");
+}
+if(defined($opt_i)) {
+  if ($makefits) {
+    $fptr->update_key(TINT, "FREQSAMP", $opt_i, "Input Frequency Samples", $statp);
+$fptr->write_comment("If FREQSAMP < FFTLEN, then the transform was zero-filled", $statp);
+  }
+  push(@trailer, "i       FREQSAMP $opt_i # If FREQSAMP < FREQS, the transform was zero-filled.");
+}
+if ($makefits) {
+  $fptr->update_key(TDOUBLE, "RANGERES", $rangeres, "[m] Range extent per pixel", $statp);
+  $fptr->update_key(TINT, "SAMPPBD", $spb, "Samples Per Baud", $statp);
+  $fptr->update_key(TINT, "ROWSPBD", $rowsperbaud, "Rows per baud", $statp);
+  $fptr->write_comment("SAMPPBD is the number of input samples taken per baud.", $statp);
+  $fptr->write_comment("ROWSPBD is the number of output image rows saved per baud.", $statp);
+  $fptr->write_comment("ROWSPBD and SAMPPBD may differ either because data were thrown away, or because the extra samples were used in the frequency processing.", $statp);
+  $fptr->update_key(TSTRING, "CODEPROC", $codemethod, "Code processing method", $statp);
+  $fptr->write_comment("CODEPROC is the code processing method: values are short, long_orig, or long_mod. short means short-code data processed so that each Doppler fft includes data from all samples per baud; long_mod means long-code data processed in the same way; long_orig means long-code data where each sample per baud is processed separately and the separate images are then interleaved in delay.", $statp);
+}
+if ($opt_E) {
+  if ($makefits) {
+    $fptr->update_key(TSTRING, "EPHEMERI", $opt_E, "", $statp);
+  }
+  push(@trailer,
+       "s       EPHEMERIS $opt_E");
+}
+if (defined($opt_X)) {
+  if ($makefits) {
+    $fptr->update_key(TDOUBLE, "TXPOWER", $opt_X, "[kW] Transmitted power", $statp);
+  }
+  push(@trailer,
+       "i       TX_POWER $opt_X # TX power in kW");
+}
+if (defined($opt_C)) {
+  if ($makefits) {
+    $fptr->update_key(TDOUBLE, "TSYSSIGS", $opt_C, "Fraction of Tsys in 1 sigma from background subtraction", $statp);
+  }
+  push(@trailer,
+       "f       TSYSPERSIG $opt_C # Fraction of Tsys in 1 sigma from background subtraction");
+}
+if (defined($opt_B)) {
+  if ($makefits) {
+    $fptr->update_key(TDOUBLE, "SIGCNTS", $opt_B, "Raw counts in 1 sigma from background subtraction", $statp);
+  }
+  push(@trailer,
+       "f       SIGMA $opt_B # Raw counts in 1 sigma 1 sigma from background subtraction");
+}
+if ($makefits) {
+  if (defined($opt_P)) {
+    if ($opt_P =~ /O/) {
+      $fptr->update_key(TSTRING, "POL", "OC", "Polarization", $statp);
+    } elsif ($opt_P =~ /S/) {
+      $fptr->update_key(TSTRING, "POL", "SC", "Polarization", $statp);
+    } else {
+      $fptr->update_key(TSTRING, "POL", "Unknown", "Polarization", $statp);
+    }
+  } else {
+    $fptr->update_key(TSTRING, "POL", "Unknown", "Polarization", $statp);
+  }
+}
+if (defined($opt_P)) {
+  if ($opt_P =~ /O/) {
+    push(@trailer,
+         "s       POLARIZATION OC");
+  } elsif ($opt_P =~ /S/) {
+    push(@trailer,
+         "s       POLARIZATION SC");
+  }
+}
+
+if ($makefits) {
+  $fptr->write_date($statp);
+  $fptr->write_history("Radar image written by writefits $RCSVer", $statp);
+  $fptr->write_history("$RCSId", $statp);
+}
+print STDERR "offset $offset\n";
+if ($makerdf) {
+  for ( (@header, '.') ) {printf "%s\n", $_;}
+  flush(*STDOUT);
+}
+
+  my (@data,@vig_data,@vig_row);
+  my ($count,$index1,$index2,$dummy);
+  my ($len,$line);
+if ($makefits) {
+  $len = read(INFILE, $line,  $width * $height * 4);
+  if ((defined($opt_S)) ^ ($Config{byteorder} =~ /1234/)) {
+    $line = pack('N*', unpack('V*', $line)); # Swap endian
+    $fptr->write_history("Data byte-swapped to big-endian.", $statp);
+  }
+  @data = unpack("f*", $line);
+print STDERR "data0 ", $data[0], "\n";
+  @vig_data = ();
+  for ($count=0; $count < $height_use; $count++) {
+    $index1 = ($lskip1 + $count) * $width + $fskip1;
+    $index2 = $index1 + $width_use - 1;
+    if (defined($opt_r)) {
+      @vig_row = reverse(@data[$index1 .. $index2]);
+    } else {
+      @vig_row = @data[$index1 .. $index2];
+    }
+    push(@vig_data, @vig_row);
+  }
+print STDERR "data0 ", $vig_data[0], "\n";
+my  $group = 1;
+my  $first = 1;
+my  $nelem = $width_use * $height_use;
+print STDERR "w h nelem $width_use, $height_use $nelem\n";
+  fits_write_img_flt($fptr,$group, $first, $nelem, \@vig_data, $statp);
+  fits_report_error(*STDERR, $statp);
+  $fptr->write_chksum($statp);
+  $fptr->close_file($statp);
+  fits_report_error(*STDERR, $statp);
+}
+
+if ($makerdf) {
+  if ($lskip1 > 0) { read(INFILE, $dummy, $lskip1*$width*4); }
+  for ($count=0; $count < $height_use; $count++) {
+    if ($fskip1 > 0) { read(INFILE, $dummy, $fskip1*4); }
+    read(INFILE, $line, $width_use*4);
+    if (defined($opt_S)) {$line = pack('N*', unpack('V*', $line));} # Swap endian
+    if(defined($opt_r)) {
+      print(STDOUT
+            pack($packstring, reverse(unpack($packstring, $line))));
+    } else {
+      print(STDOUT $line);
+    }
+    if ($fskip2 > 0) { read(INFILE, $dummy, $fskip2*4); }
+  }
+  flush(*STDOUT);
+  for ( (@trailer, '.') ) {printf "%s\n", $_;}
+}
+
+
+
+sub julian {
+
+    my($year, $month, $day) = @_;
+#       my($julcdr) = $_[3];     # test for gregorian maybe
+    my($julcdr) = 0;            # but not yet
+    my($lcy, $lcm, $lpyr, $lpdays);
+  
+#     Trap invalid months
+  
+    if ($month < 1 || $month > 12) {
+        return(-1);
+#           die ("***JULIAN: Month outside the range 1 to 12");
+    }
+#     Adjust 'internal' calendar to start in March so that leap days
+#     occur at end of year
+  
+    if ($month > 2) {
+        $lcy = $year;
+        $lcm = $month + 1;
+    } else {
+        $lcy = $year - 1;
+        $lcm = $month + 13;
+    }
+  
+#     If Gregorian calendar, adjust for missing leap days
+  
+    if ($julcdr) {
+        $lpdays = 0;
+    } else {
+        $lpyr = $lcy;
+        if ($lpyr < 0) {$lpyr++};
+        $lpdays = 2 - floor($lpyr/100) + floor($lpyr/400);
+    }
+  
+#     Accumulate Julian Date based on number of days per year and month
+    
+    my $jdy = 365.25 * $lcy;
+    if ($lcy < 0) {$jdy -= 0.75;}
+    my $jdm = 30.6001 * $lcm;
+    return(int($jdy) + int($jdm) + $day + 1720994.5 + $lpdays);
+}
