@@ -5,7 +5,7 @@
 # a default here. Comment out if not desired.
 # TODO: This assumes only one path for metadata, will need changed if
 # subdirs are needed.
-$ao_metadatadefault="/data/aodata/obs4/lro";
+$ao_metadatadefault="/data/aodata/share/obs4/lro";
 #$ao_metadatadefault="/share/obs4/lro";
 #
 #$AOPATH="/some/path/";
@@ -46,13 +46,13 @@ if (! defined ($AOPATH)) { $AOPATH = ""; }
 use Getopt::Std;
 #use strict;
 
-our($opt_a, $opt_b, $opt_d, $opt_f, $opt_l, $opt_o, $opt_p, $opt_r, $opt_z);
+our($opt_a, $opt_b, $opt_d, $opt_f, $opt_l, $opt_o, $opt_p, $opt_r, $opt_z,$opt_L);
 my ($year, $month, $day, $hour, $min, $sec, $jd, $rest, $jduserf, $jduserl, $jdlogs);
 my ($mjd, $val, $time, $power, $bestmjdf, $bestvalf, $besttimef, $bestpowerf, $bestf, $marginf);
 my ($bestmjdl, $bestvall, $besttimel, $bestpowerl, $bestl, $marginl, $powerstoavg);
 my ($lastj, $closestj, $failedf, $failedl, $logfile);
 
-getopts("ab:d:f:hl:p:r:u:vz");
+getopts("ab:d:f:hl:L:p:r:su:vz");
 
 $usage = "\nUsage: txpower [-a -v -p logfile -r RTT -u uniqueTime -f startTime -l endTime -d datafile]\n
 Default output with no options is full dump of monlro power logs\n
@@ -66,7 +66,10 @@ Default output with no options is full dump of monlro power logs\n
  -f 'time' = dump everything after a specific time ('YYYY-MM[M]-DD HH:MM:SS' in UT)
  -l 'time' = output average power from -f to this time; use -v to dump intermediate values 
              (can have problems with RTT ~ 10-20 sec ~ cadence of power logging)
- -d datafile = use showriscans to get times (defaults to -a and calculates -r RTT itself)\n\n";
+ -d datafile = use showriscans to get times (defaults to -a and calculates -r RTT itself)
+ -s          silent except for specific output
+ -L listoftimes -> like -d, but use a file that contains Lines with TXstart, TXend, RXstart.
+             outputs a file with lists of RXstart and power.\n\n";
 
 if (($#ARGV > -1) || ($opt_h) || ($opt_z)) { die $usage }
 
@@ -84,6 +87,10 @@ for ($opt_p, $opt_u, $opt_f, $opt_l, $opt_d)  # check if filenames and times are
 
 # before reading power log, check if any times are requested
 
+my @starttimes;
+my @stoptimes;
+my @rx;
+my $rx;
 $#starttimes = -1;  # user-given start times from -u, -f, or -d
 $#stoptimes = -1;   # user-given stop times from -f or -d
 
@@ -123,7 +130,7 @@ if (($opt_f) || ($opt_u)) {  # user-given time for power request
 	if ($check == 0) { die "\n ERROR:  Requested time (-f/-u) not recognized!  Must be of format 'yyyy-mm[m]-dd hh:mm'  Check month name!\n\n" }
     }
 
-    if (length($opt_f) < 14) { print "\n WARNING: Requested time (-f/-u) is shorter than YYYYMMDDHHMMSS so padding with zeroes!\n" }
+    if (length($opt_f) < 14) { print STDERR "\n WARNING: Requested time (-f/-u) is shorter than YYYYMMDDHHMMSS so padding with zeroes!\n" }
     while (length($opt_f) < 14) { $opt_f = $opt_f . '0' }
 
     push @starttimes, $opt_f;  # add -f (or -u) start time to the array
@@ -160,7 +167,7 @@ if ($opt_l) {  # user-given time for power request
 	if ($check == 0) { die "\n ERROR:  Requested time (-l) not recognized!  Must be of format 'yyyy-mm[m]-dd hh:mm'  Check month name!\n\n" }
     }
 
-    if (length($opt_l) < 14) { print "\n WARNING: Requested time (-l) is shorter than YYYYMMDDHHMMSS so padding with zeroes!\n" }
+    if (length($opt_l) < 14) { print STDERR "\n WARNING: Requested time (-l) is shorter than YYYYMMDDHHMMSS so padding with zeroes!\n" }
     while (length($opt_l) < 14) { $opt_l = $opt_l . '0' }
 
     push @stoptimes, $opt_l;  # add -l stop time to the array
@@ -183,6 +190,19 @@ if ($opt_d) {  # use showriscans to get times from datafile
 	}
     } else { die "\n ERROR:  Datafile $opt_d not found!\n\n" }
 }
+if ($opt_L) { # List of times
+  open(DATA, "<$opt_L") || die;
+  while (<DATA>) {
+    /\s*([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})\s+([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})\s+([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})/;
+     $opt_f = $1.$2.$3.$4.$5.$6;
+     $opt_l = $7.$8.$9.$10.$11.$12;
+     $rx = $13.$14.$15.$16.$17.$18;
+     push @starttimes, $opt_f;
+     push @stoptimes, $opt_l;
+     push @rx, $rx;
+   }
+ }
+
 
 # to save time, store the first requested time to compare with the first entry of the power log
 # so that if the request precedes the start of the log, it can bail without reading the entire log
@@ -234,7 +254,7 @@ if ($opt_p) {  # user provided
 	for ($i = $#powerlogdates; $i >= 0; $i--)  # find closest power log date
 	{
 	    if ($yymmdd <= $powerlogdates[$i]) { $logfile = "$powerloglist[$i]" }
-	    if ($yymmdd == $powerlogdates[$i]) { print "\n WARNING:  Date requested matches date power logs were moved!\n           Using $mdpath/pwrdata.log.$powerlogdates[$i] but may need to use -p with the\n            next file in $mdpath/pwrdata.log.* if no valid data is returned!\n" }
+	    if ($yymmdd == $powerlogdates[$i]) { print STDERR "\n WARNING:  Date requested matches date power logs were moved!\n           Using $mdpath/pwrdata.log.$powerlogdates[$i] but may need to use -p with the\n            next file in $mdpath/pwrdata.log.* if no valid data is returned!\n" }
 	}
 	
     } else { $logfile = "$mdpath/pwrdata.log.000" }  # otherwise use current logfile
@@ -253,7 +273,7 @@ open(FH, "<$logfile") || die "\n ERROR:  Could not open power log $logfile !\n\n
 
 # read in entire power log
 
-print "\nParsing power log:  $logfile ...\n\n";
+if (not $opt_s) {print "\nParsing power log:  $logfile ...\n\n";}
 
 while (<FH>) {
     ($mjd, $val) = /[^0-9]*([0-9.]+)\s+([-+0-9.E]+)/;  # read MJDs and powers
@@ -359,7 +379,7 @@ for ($i=0; $i<=$#starttimes; $i++)  # loop through start times
 
 	    } elsif (($marginf > $bestf) && ($bestj == 0) && ($failedf == 0)) 
 	    { 
-		print " WARNING: Cannot find valid transmitter powers within $opt_b minutes of time $starttimes[$i]!\n\n";
+		print STDERR " WARNING: Cannot find valid transmitter powers within $opt_b minutes of time $starttimes[$i]!\n\n";
 		$failedf = 1;
 	    }
 	    
@@ -411,13 +431,15 @@ for ($i=0; $i<=$#starttimes; $i++)  # loop through start times
 
 				# output results to screen
 
-				printf("Request power between %s-%s-%sT%s:%s:%s and %s-%s-%sT%s:%s:%s", substr($starttimes[$i],0,4), substr($starttimes[$i],4,2), substr($starttimes[$i],6,2), substr($starttimes[$i],8,2), substr($starttimes[$i],10,2), substr($starttimes[$i],12,2), substr($stoptimes[$i],0,4), substr($stoptimes[$i],4,2), substr($stoptimes[$i],6,2), substr($stoptimes[$i],8,2), substr($stoptimes[$i],10,2), substr($stoptimes[$i],12,2));
-				if ($opt_r) {printf " minus RTT of %i sec", $opt_r+0.5}
-				if ($opt_a) {print " and adjusted +4:00:00 to UTC\n"} else {print "\n"}
-				printf("Average power between %s and %s is %3i kW\n\n", $besttimef, $besttimel, $avgpower);
+				if (not $opt_s) {
+				  printf("Request power between %s-%s-%sT%s:%s:%s and %s-%s-%sT%s:%s:%s", substr($starttimes[$i],0,4), substr($starttimes[$i],4,2), substr($starttimes[$i],6,2), substr($starttimes[$i],8,2), substr($starttimes[$i],10,2), substr($starttimes[$i],12,2), substr($stoptimes[$i],0,4), substr($stoptimes[$i],4,2), substr($stoptimes[$i],6,2), substr($stoptimes[$i],8,2), substr($stoptimes[$i],10,2), substr($stoptimes[$i],12,2));
+				  if ($opt_r) {printf " minus RTT of %i sec", $opt_r+0.5}
+				  if ($opt_a) {print " and adjusted +4:00:00 to UTC\n"} else {print "\n"}
+				  printf("Average power between %s and %s is %3i kW\n\n", $besttimef, $besttimel, $avgpower);
+				}
 			    }
 			} elsif ($failedl == 0) { 
-			    print " WARNING: Cannot find valid transmitter powers within $opt_b minutes of stoptime $stoptimes[$i]!\n           Use -v to determine if any valid powers exist between requested times!      \n\n";
+			    print STDERR " WARNING: Cannot find valid transmitter powers within $opt_b minutes of stoptime $stoptimes[$i]!\n           Use -v to determine if any valid powers exist between requested times!      \n\n";
 			    $failedl = 1;
 			}
 			
@@ -437,6 +459,12 @@ if ($opt_d)  # output average powers for scans in datafile for chris_craft and o
     print "\'\n";
     printf "Overall average power for log2table.pl:  -t %3i\n", $fullavgpwr;
 }
+if ($opt_L) {# make a file with the times and powers
+   for ($i=0; $i<=$#powerarray; $i++) {
+     print "$rx[$i] $powerarray[$i]\n";
+   }
+ }
+
 
 if (not $opt_l)  # using -l dumps output in loops above rather than here (-d assigns $opt_f and $opt_l so it skips this part)
 {
