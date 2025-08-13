@@ -1,0 +1,275 @@
+#!/usr/bin/perl -w
+use Time::Local;
+# use Time::gmtime;
+use POSIX;
+use Getopt::Std;
+use constant SPD    => 86400.0;
+our ($opt_H,$opt_j,$opt_l,$opt_s,$opt_x);
+
+getopts ("c:F:Hjl:sxz:");
+
+#
+# $Log: hdrrunnum,v $
+# Revision 1.6  2018/04/04 00:36:29  nolan
+# 2015/01/23 PT - added call to curvecor to create *.jit files automatically
+#
+# 2015/01/23 PT - added call to curvecor to create *.jit files automatically
+#                  and option -j to suppress jitter correction
+#
+# Revision 1.5  2013/10/03 15:31:28  nolan
+# implemented flags (forwarded to write{fits|rdf}) to window output images
+#
+# Revision 1.4  2013/09/06 20:37:13  nolan
+# delete old im(sc) files to avoid message and mislined files
+#
+# Revision 1.3  2012/02/12 11:08:41  nolan
+# hdr files now have endianness info
+#
+# Revision 1.2  2011/04/29 13:55:44  nolan
+# changed to sys perl
+#
+# Revision 1.1  2010/10/24 16:29:16  nolan
+# Initial revision
+#
+#
+
+$RCSId ='$Id: hdrrunnum,v 1.6 2018/04/04 00:36:29 nolan Exp $';
+$RCSVer = '$Revision: 1.6 $';
+$RCSVer =~ s/\$//g;
+
+$optx = "";
+if ($opt_H) {
+  $optx .= " -H ";
+}
+if ($opt_x) {
+  $optx .= " -x ";
+}
+
+if ($opt_c) {
+  $optx .= " -c \"$opt_c\" ";
+}
+
+if ($opt_F) {
+  $optx .= " -F $opt_F ";  # transmit frequency (MHz)
+}
+
+if (defined($opt_l)) {
+  $optx .= " -l $opt_l ";  # closed-loop time (usec) -- could be 0
+}
+
+if (defined($opt_z)) {
+    $optx .= " -z $opt_z ";  # minutes added to local timezone to get UT
+    $tzcorr = 60*$opt_z;
+} else {
+    $tzcorr = 60*240;        # AST
+}
+
+if ($#ARGV < 0) {
+  print STDERR ('
+Usage:    hdrrunnum.pl [options] logfile object hdrfilenames | sh
+
+Options:  -c "lag1o lagno freq1o freqno" pass output range to writerdf (must use quotes)
+          -F transmit frequency (MHz)
+          -H means long code processed the Harmon way
+          -j skip jitter correction using curvecor
+          -l closed-loop time (microsec)
+          -s means don\'t ignore hdrs ending in sc
+          -x means don\'t check for "rx on scan"
+          -z zoneoff (minutes earlier than UT for date/time input: default = 240)
+
+WARNING!:  Must be run on RSERV to avoid perl errors when calling curvecor!
+');
+  exit (1);
+}
+$logfile = shift;
+$object = shift;
+
+if ($object =~ /hdrf/) {
+  print STDERR "ERROR: object name has hdrf in it, which is very unlikely";
+  exit
+}
+
+# Get us started
+open (RDFSCRIPT, ">rdfscript");
+chmod 0775, "rdfscript";
+print RDFSCRIPT ('#!/bin/sh
+CMD="writerdf"
+EXT=".rdf"
+export EXT CMD
+');
+print RDFSCRIPT ("# $RCSId\n");
+print RDFSCRIPT ('
+     if [ $? != 0 ]
+     then
+                exit 2
+     fi
+     while getopts "SrfA:1:2:" i
+     do
+                case $i in
+                f)     CMD="writefits"; EXT=".fits" ;;
+                r)     CMD="$CMD -r" ;;
+                S)     CMD="$CMD -S" ;;
+                A)     CMD="$CMD -A $OPTARG" ;;
+                1)     CMD="$CMD -1 $OPTARG" ;;
+                2)     CMD="$CMD -2 $OPTARG" ;;
+                esac
+     done
+');
+
+close RDFSCRIPT;
+
+print STDERR ("Using logfile $logfile and object \"$object\"\n");
+FILES: for (@ARGV) {
+  ($name, $num) = /(.*).hdrf(.*)/;
+# convenience: ignore scs unless specifically asked, as
+# they're probably duplicates
+  if ($name =~ /(.*)sc$/ && (! $opt_s)) {
+    print STDERR "skipping sc hdr $_\n";
+    next;
+  }
+
+  print STDERR "$_ $name $num\n";
+  if (! $name) { next FILES; }
+  
+  open(HDR, "< $_");
+  
+  $nsamples = 0;
+  $usamples=0;
+  $spb = 1; # Not in older files
+  $ncohavg = 0; # not sure I'll always find it
+  $nlooks = 0; # not sure I'll always find it
+  $flipped = "-r" ; # RI data are flipped, which is the default.
+  $backg = -1.;
+  $sig = -1.;
+  $sfm = -999;
+  $extra = "";
+  $endian = "";
+
+  while (<HDR>) {
+    if (/Date:([0-9]+)/) {
+      $year = int($1 / 1000);
+      $doy = $1 - (1000 * $year);
+    }
+    if (/FreqReversed\ *:\ *no/) {$flipped = "";}
+    if (/FreqReversed\ *:\ *yes/) {$flipped = "-r";} # in case it appears multiple times
+    if (/stScanTm: *([0-9]+)/) { $sfm = $1;}
+    if (/1st range bin kept *: *([+-]*[0-9]+)/) {$range1 = $1 - 1;} #zero-based
+    if (/number of range bins kept *: *([0-9]+)/) {$rangen = $1 + $range1 - 1;}
+    if (/length fft *: *([0-9]+)/) {$xform = $1;}
+    if (/freq points kept *: *([0-9]+)/) {
+      $freq1 = - ($1 / 2); # convention is 0 in center
+      $freqn = $freq1 + $1 - 1;
+    }
+    if (/coherent average pre FFT *: *([0-9]+)/) {$ncohavg = $1;}
+    if (/ffts added incoherently *: *([0-9]+)/) {$nlooks = $1;}
+    if (/samples per baud *: *([0-9]+)/) {$spb = $1;}
+    if (/average removed *: *([0-9.]+)/) {$backg = $1;}
+    if (/1 sigma scaling  *: *([0-9.]+)/) {$sig = $1;}
+    if (/samples\/rbin input *: *([0-9]+)/) {$nsamples = $1;}
+    if (/samples\/rbin used *: *([0-9]+)/) {$usamples = $1;}
+# look for the last one and hope it's right
+    if (/byteorder.*1234/) {$endian = "little";}
+    if (/byteorder.*4321/) {$endian = "big";}
+  }
+
+  close (HDR);
+
+  if ($endian eq "little") {
+	$extra .= " -S ";
+	}
+
+  if ($sfm < 0) {
+    die "Couldn't find start scan time (stScanTm) for '$name' , '$num'";
+  }
+
+  $df = "";
+  if (-r $name.".mapsf".$num) {
+    $df = $name.".mapsf".$num;
+  } elsif (-r $name.".mapf".$num) {
+    $df = $name.".mapf".$num;
+  }
+
+  $dfsc = "";
+  if (-r $name."sc.mapsf".$num) {
+    $dfsc = $name."sc.mapsf".$num;
+  } elsif (-r $name."sc.mapf".$num) {
+    $dfsc = $name."sc.mapf".$num;
+  }
+
+  if (!$df && !$dfsc) {
+    die "Couldn't find OC or SC datafile from '$name' , '$num'";
+  }
+
+  $runnum = sprintf("run%04d%02d%02d%02d%02d%02d", &ydstoymd($year, $doy, $sfm, -$tzcorr));
+
+  if (!$opt_j) {system("curvecor", "-r", "$runnum", "$logfile")}  # call curvecor to produce jitter file $runnum.jit
+
+  if ($df) {printf ("/bin/rm -f $runnum.im ; ln -s $df $runnum.im\n")};
+
+  if ($dfsc) {printf ("/bin/rm -f $runnum.imsc ; ln -s $dfsc $runnum.imsc\n")};
+
+  if ($ncohavg) {$extra .= " -K $ncohavg";}
+  if ($nlooks) {$extra .= " -k $nlooks";}
+  if ($sig != -1. && $backg != -1.) {
+    $tsyspersig = $sig / $backg;
+    $extra .= " -C $tsyspersig -B $sig";
+  }
+# If we didn't use them all, say so. If we did, then we may have
+# zero-filled, and need the original one.
+  if($nsamples > $usamples) {$nsamples = $usamples;}
+	
+  printf( "logfiletordf $optx $extra $flipped -i $nsamples -a -f $runnum -b logflog -p $spb -n $logfile \"$object\" $xform $range1 $rangen $freq1 $freqn >> rdfscript\n");
+}
+
+sub ydstoymd {
+
+  use strict 'vars';
+
+  my ($year, $doy, $sfm, $offset) = @_;
+
+  my ($Day, $Secs, $yyyy, $mm, $dd, $hh, $min, $ss, $alph, $A, $B, $C, $D, $E, $JD);
+  
+  $Secs = $sfm - $offset;
+  $Day = $doy;
+  
+  while($Secs < 0) {
+    $Secs += SPD;
+    $Day--;
+  }
+  
+  while($Secs >= SPD) {
+    $Secs -= SPD;
+    $Day++;
+  }
+  
+  $hh = int($Secs / 3600);
+  $Secs -= 3600 * $hh;
+  $min = int($Secs / 60);
+  $Secs -= 60 * $min;
+  
+  $JD = 1721060 + int($year * 365.2424999) + $Day;
+
+  #if 0 /* Julian changeover.  We're always Gregorian */
+  #  if(JD < 2299161) {
+  #     A = JD;
+  #  } else {
+
+  $alph = int(($JD - 1867216.25) / 36524.25);
+  $A = int($JD + 1 + $alph - (int($alph/4)));
+  
+  #  }
+
+  $B = $A + 1524;
+  $C = int(($B - 122.1) / 365.25);
+  $D = int(365.25 * $C);
+  $E = int(($B - $D) / 30.6001);
+
+  $dd = $B - $D - int(30.6001 * $E);
+  $mm = $E - 1;
+  if($E >= 14) {$mm -= 12;}
+  $yyyy = $C - 4716;
+  if($mm < 3) {$yyyy++;}
+  
+  return( $yyyy, $mm, $dd, $hh, $min, $Secs);
+
+}
