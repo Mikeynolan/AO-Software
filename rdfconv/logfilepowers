@@ -1,0 +1,318 @@
+#!/usr/bin/perl -w
+use Time::Local;
+# use Time::gmtime;
+use POSIX;
+use Getopt::Std;
+
+our ($opt_x,$opt_H,$opt_v);
+
+sub getrunlog;
+
+my $usage='Usage: logfiletordf  [-K ncohavg] [-k nlooks] [-p spb] [-a] [-n] [-B countsin1sigma] [-C tsysin1sigma] [-D countsin1sigma SC] [-E tsysin1sigma SC] [-l looptime] [-b outfile] [-t] [-T power] logfile object [xformlength Lag1 Lagn freq1 freqn]
+ -a means make script whether image exists or not.
+    xform, lags, and freqs must be specified when -a is used
+ -b output filename (default = stdout)
+ -B countsin1sigma (forward OC calibration information from .hdr)
+ -C tsysin1sigma (forward OC calibration information from .hdr)
+ -c "lag1o lagno freq1o freqno" pass output range to writerdf (must use quotes)
+ -D countsin1sigma (forward SC calibration information from .hdr)
+ -E tsysin1sigma (forward SC calibration information from .hdr)
+ -e use error file (for runs with ephem errors)
+ -F transmit frequency (MHz)
+ -f runnum means only do runnum (for auto scripts)
+ -H means long code processed the Harmon way
+ -i nsamples (forward info)
+ -K ncohavg inserts ncohavg in rdf header and affects exposure time computation (default = 1).
+ -k nlooks  inserts nlooks  in rdf header and affects exposure time computation (default = 1).
+ -l closed-loop time (microsec).
+ -n means don\'t transpose (because it already is).
+ -p samples per baud (default = 1).
+ -r means reverse spectra left-right (for writerdf)
+ -S means processed littleendian
+ -t means get tranmit power using txpower
+ -t txpower set transmit power to txpower
+ -v means verbose
+ -x means don\'t check for "rx on scan"
+ -z zoneoff (minutes earlier than UT for date/time input: default = 240)
+ $Id: logfiletordf,v 1.9 2012/10/18 16:03:18 nolan Exp nolan $
+ This program should be merged with hdrrunnum
+';
+my %months = (Jan=>0, Feb=>1, Mar=>2, Apr=>3, May=>4, Jun=>5, Jul=>6, Aug=>7, Sep=>8, Oct=>9, Nov=>10, Dec=>11);
+my $SPD=86400;
+
+my $baud=1;
+my $delayfrac = 0;
+my $caltm=0;
+my $code=1;
+my $ephemeris="";
+my $optlong = "";
+my $txoffhz=0;
+my $ephdelay=0;
+my $numpol=2;
+my $gw=1.;
+my $fracBd = 0.;
+my $rxsecnoise = 0.;
+my $index=0;
+my $scan= ""; # gets used in a name
+our $opt_r = 0;
+our $opt_S = 0;
+our $opt_B = 0;
+our $opt_C = 0;
+our $opt_c = "";
+our $opt_D = 0;
+our $opt_E = 0;
+our($opt_a, $opt_b,$opt_e,$opt_f,$opt_F,$opt_i,$opt_j);
+our($opt_K,$opt_k,$opt_l,$opt_p,$opt_t,$opt_T,$opt_z);
+my $nsamples=0;
+getopts ("ab:B:c:C:D:e:E:f:F:Hi:jK:k:l:np:rStT:vxz:");
+
+my @tf;
+my @tl;
+my @rx;
+
+my $extraopts = "";
+if ($opt_S) {$extraopts .= " -S";}
+if ($opt_r) {$extraopts .= " -r";}
+if ($opt_F) {$extraopts .= " -N $opt_F";}
+if (defined($opt_l)) {$extraopts .= " -l $opt_l";}  # could be 0
+if ($opt_i) {$nsamples = $opt_i;}
+if ($opt_K) {$ncohavg = "$opt_K";} else {$ncohavg = 1;}
+if ($opt_k) {$nlooks = "$opt_k";} else {$nlooks = 1;}
+if ($opt_e) {
+  open (ERRINFILE, "< $opt_e");
+  @errs = <ERRINFILE>;
+  close(ERRINFILE);
+}
+if (defined($opt_z)) {$tzcorr = 60*$opt_z;} else {$tzcorr = 60*240;}
+
+my $mytxpower = "";
+my $usetxpower = 0;
+my $setpower = 0;
+if ($opt_t) {
+  $usetxpower = 1;
+}
+if ($opt_T) {
+  $mytxpower = "-x $opt_T";
+}
+
+if ($#ARGV < 0) {die $usage;}
+$logfile= shift @ARGV;
+$object = shift @ARGV;
+
+open (LOGFILE, $logfile);
+
+$nextisdate = 0;
+$gotphase=0;
+$gotphaselast=0;
+
+LOGLOOP: while (<LOGFILE>) {
+  chomp;
+  if ($nextisdate) {
+    ($Mon, $Day, $Hour, $Min, $Sec, $Year) = /\w+ (\w+) ([ \d]{2}) ([ \d]{2}):([ \d]{2}):([ \d]{2}) (\d{4})/;
+    $Year -= 1900;
+    $setup_secs = timelocal($Sec, $Min, $Hour, $Day, $months{$Mon}, $Year);
+    $nextisdate = 0;
+    next LOGLOOP;
+  }
+  if (/tx cycle.*up:(.[0-9:]+) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $txuptime= $1;
+    my $txon = $2;
+    my $txoff = $3;
+    if ($txon >= 86400) { # Bug in software can give 24:xx:xx 
+	$txon -= 86400;
+	$txuptime =~ s/24:/00:/;
+    }
+    $txlength= $txoff - $txon;
+    while ($txlength < 0) {$txlength += $SPD;}
+  }
+  if (/rx cycle.*up:(.[0-9:]+) \(([0-9]*)\).*\(([0-9]*)\)/ ){
+    $rxuptime= $1;
+    $rxlength = $3 - $2;
+    while ($rxlength < 0) {$rxlength += $SPD;}
+
+  }
+# bistatic
+  if (/tx start.*up:([ 0-9:]+) \(([0-9]*)\)/){
+    $txuptime= $1;
+    $txlength= 0;
+    while ($txlength < 0) {$txlength += $SPD;}
+  }
+  if (/rx start.*up:([0-9:]+) \(([0-9]*)\)/){
+    $rxuptime= $1;
+    $rxlength = 0;
+    while ($rxlength < 0) {$rxlength += $SPD;}
+
+  }
+  if (/closeloop.*up:(.[0-9:]+)\/(.*) down:(.[0-9:]*)/) {
+    $txlength = $3 - $1;
+    while ($txlength < 0) {$txlength += $SPD;}
+    $rxlength = $txlength;
+    $rxuptime=$2;
+    $txuptime=$2;
+  }
+  if (/^sbinit logstart/) {$nextisdate = 1;}
+  if (/^baud\s=\s*([\d.]*)/) { $baud = $1; }
+  if (/^caltm\s=\s*([\d.]*)/) {$caltm = $1; }
+  if (/^code\s=\s*([0-9.]*)/) {$code = $1; }
+  if (/^dop\s= (.*)/) {$dop = $1; }
+  if (/^ephdelay\s=\s*([-0-9.]+)/) {$ephdelay = $1; }
+  if (/^ephname\s=\s(.*)/) {$ephemeris = $1; }
+#  if (/^ephoff = ([+-]?[0-9.]*)/) {$ephoff = $1; }
+  if (/^delayfrac = ([0-9]*)/) {$delayfrac = $1; }
+  if (/^numpol = ([0-9]*)/) {$numpol = $1; }
+  if (/^rigw = ([0-9.]*)/) {$gw = $1; }
+#  if (/^ripacking = ([0-9.]*)/) {$ripacking = $1; }
+  if (/^rxsecnoise = ([0-9.]*)/) {$rxsecnoise = $1; }
+#  if (/^tmephm = ([0-9.]*)/) {$tmephm = $1; }
+  if (/^txoffhz = ([+-]?[0-9.]*)/) {$txoffhz = $1; }
+  if (/^offsets tx: ([+-]?[0-9.]*) ([+-]?[0-9.]*) rx: ([+-]?[0-9.]*) ([+-]?[0-9.]*)/) {
+    $txoffra = $1;
+    $txoffdec = $2;
+    $rxoffra = $3;
+    $rxoffdec = $4;
+  }
+  if (/fracBdUsecs:([-+\d.]*)/) {
+    $fracBd = $1;
+    $gotphase=1;
+  }
+
+  if (/fracBd:([-+\d.]*)/) {
+    $fracBd = $1;
+    $gotphase=1;
+  }
+  if (/^pncl = ([+-]?[0-9.]*)/) {
+	if($1 == 1) {
+		if ($opt_H) {
+			$optlong = "-H ";
+		} else {
+    		print STDERR "
+Default is Nolan Processing, -H for Harmon
+
+";
+			$optlong = "-L ";
+		}
+		$code = 1099511627775;
+	} else {
+		$optlong = "";
+	}
+  }
+  if (/^pncgen\s*=\s*(\S+)/) {
+	if($1 eq "pncl") {
+		if ($opt_H) {
+			$optlong = "-H ";
+		} else {
+    		print STDERR "
+Default is Nolan Processing, -H for Harmon
+
+";
+			$optlong = "-L ";
+		}
+		$code = 1099511627775;
+	} else {
+		$optlong = "";
+	}
+  }
+
+  # This one is the marker
+  if (/rx on scan/) {
+    $gotscan=1;
+  }
+
+  if($gotscan || ($gotphaselast && $opt_x)) {
+    if ($gotscan) {
+      $scan = $1;
+    }
+    $gotscan = 0; $gotphaselast=0;
+    ($hour, $min, $sec) = ($txuptime =~ /(..):(..):(..)/);
+    $txupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($txupsecs < $setup_secs) { $txupsecs += 86400};  # must have crossed midnight
+    ($hour, $min, $sec) = ($rxuptime =~ /(..):(..):(..)/);
+    $rxupsecs = timelocal($sec, $min, $hour, $Day, $months{$Mon}, $Year);
+    while ($rxupsecs < $setup_secs) { $rxupsecs += 86400};
+    $ISOdateTXUP = strftime("%Y-%m-%dT%T", localtime($txupsecs+$tzcorr));
+    $ISOdateTXDN = strftime("%Y-%m-%dT%T", localtime($txupsecs+$txlength+$tzcorr));
+    $ISOdateRXUP = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$tzcorr));
+    #    $ISOdateRXDN = strftime("%Y-%m-%dT%T", localtime($rxupsecs+$rxlength+$tzcorr));
+    $runnum = strftime("run%Y%m%d%H%M%S", localtime($rxupsecs+$tzcorr));
+    $date = strftime("%Y%m%d", localtime($rxupsecs+$tzcorr));
+    $etime = strftime("%H%M%S", localtime($rxupsecs+$tzcorr));
+    $exposure = $rxlength - $rxsecnoise;
+    $dateL = strftime("%Y %h %d  %T", localtime($rxupsecs));
+
+    push (@tf, $ISOdateTXUP);
+    push (@tl, $ISOdateTXDN);
+    push (@rx, $ISOdateRXUP);
+
+
+
+$caloptsoc = "";
+$caloptssc = "";
+if ($opt_B) {$caloptsoc .= " -B $opt_B";}
+if ($opt_C) {$caloptsoc .= " -C $opt_C";}
+if ($opt_D) {$caloptssc .= " -B $opt_D";}
+if ($opt_E) {$caloptssc .= " -C $opt_E";}
+
+    $index++;
+  }
+  if ($gotphase) {
+    $gotphase = 0;
+    $gotphaselast=1;
+  }
+}
+open (PF, ">powers");
+  for ($i=0; $i<=$#tf; $i++) {
+    print PF "$tf[$i] $tl[$i] $rx[$i]\n";
+  }
+  close PF;
+
+      print "\nParsing transmitter power log ...\n";
+      $txpowerout = `txpower -L powers`;  # grab txpower output for times in datafile
+      print "$txpowerout";
+
+      if ($txpowerout =~ "ERROR") { 
+	print STDERR "ERROR running txpower, try another way\n";
+	exit;
+      }  # quit chris_craft if power log is bad
+
+      if ($txpowerout =~ /is\s*([0-9]+)\s*kW/) {
+	$mytxpower = "-x $1";
+      } else {
+	undef $mytxpower;
+      }
+
+sub getrunlog {
+
+  my $issc;
+  my $RUNLOG;
+  my $tsys;
+  my $sig;
+
+  if ($#_ < 0) {
+    $RUNLOG = "$runnum.log";
+  } else {
+    $RUNLOG = "$runnum.logsc";
+  }
+  open (RUNLOG, $RUNLOG) || die "Couldn't open logfile $RUNLOG and -a not specified\n";
+  while (<RUNLOG>) {
+    if (/^lag1: *(\d+)/) {$lag1 = $1;}
+    if (/^scaling to sigmas using mean[ ]*(\S+) and sigma[ ]*(\S+)/) {
+      $sig = $2;
+      $tsys = $1 / $2;
+      if( $#_ < 0) {
+	$caloptsoc = "-B $sig -C $tsys";
+      } else {
+	$caloptssc = "-B $sig -C $tsys";
+      }
+    }
+    if (/^lagn: *(\d+)/) {$lagn = $1;}
+    if (/^f1: *([-+\d]+)/) {$freq1 = $1;}
+    if (/^fn: *([-+\d]+)/) {$freqn = $1;}
+    if (/^fft: *(\d+)/) {$xform = $1;}
+    if (/^ncoh: *(\d+)/) {$ncohavg = $1;}
+    if (/^nlooks: *(\d+)/) {$nlooks = $1;}
+    if (/^samp: *(\S+)/) {$samptime = $1;}
+    if (/^nsamples: *(\d+)/) {$nsamples = $1;}
+
+  }
+  close RUNLOG;
+}

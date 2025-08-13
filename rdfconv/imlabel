@@ -13,11 +13,16 @@ use POSIX;
 # For the cheezy csv parser
 my $file;
 my $lcfile;
-our ($opt_B,$opt_t,$opt_f, $opt_h, $opt_L, $opt_O, $opt_S, $opt_E, $opt_T, $opt_V);
+our ($opt_B,$opt_t,$opt_f, $opt_h, $opt_L, $opt_O, $opt_S, $opt_E, $opt_p, $opt_T, $opt_V);
 our $tfh;
+our $pfh;
 my $obssysfile;
 my $editor;
 my $orcid;
+my %phash;
+my $txpower;
+my $txpowernil;
+my $power;
 my $ttype;
 my $version;
 my $bookmark;
@@ -31,16 +36,17 @@ my $dateP = DateTime::Format::Strptime->new(
 );
 
 
-getopts('B:t:L:hS:E:O:V:');
+getopts('B:t:L:hS:E:O:p:V:');
 
 if ($opt_h) {
   print STDERR <<EOT;
-Usage: imlabel -L bundlelid -E editor -O orcid [-t template] [-S obssysfile] [-T targettype] [-h] file.fits [file.fits ...]
+Usage: imlabel -L bundlelid -E editor -O orcid [-p powerfile] [-t template] [-S obssysfile] [-T targettype] [-h] file.fits [file.fits ...]
     -L:  LID for bundle, to be prepended onto the LIDs (required)
     -t:  Use template as a template for the xml. Default is internal template
     -S:  File to contain Observing System xml
     -E:  Editor (required: Use full name with spaces)
     -O:  Editor ORCID (required)
+    -p:  powerfile file with list of times and transmit powers
     -T:  Targettype (default Asteroid)
     -B:  Observing system Bookmark (default AO TX;AO RX;AO RI)
     -V:  Version (default 1.0)
@@ -89,6 +95,15 @@ if ($opt_f) {
   $txfreq = $opt_f;
 } else {
   $txfreq = 2380000000.0;
+}
+if ($opt_p) {
+  open ($pfh, '<', $opt_p) or die "Can't open power file $opt_p: $!";
+  while(<$pfh>) {
+    chomp;
+    my ($key, $value) = split " ", $_, 2;
+    $phash{$key} = $value;
+  }
+  close $pfh;
 }
 
 #my $invest;
@@ -150,11 +165,15 @@ foreach $file (@ARGV) {
   $replace{'XXXCDATE'} = $cdate;
   $replace{'XXXYEAR'} = substr($cdate, 0, 4);
   $replace{'XXXVERSION'} = $version;
-  # my $txpower = '1';
-  #my $txpowernil= "";
-  # Once it becomes nillable, will change to this:
-  my $txpower = '';
-  my $txpowernil= " xsi:nil=\"true\" nilReason=\"missing\"";
+  $txpower = '';
+  $txpowernil= ' xsi:nil="true" nilReason="missing"';
+  if (exists($phash{"${start}Z"})) {
+    $power = $phash{"${start}Z"};
+    if (defined($power)) {
+      $txpower = $power * 1000;
+      $txpowernil = "";
+    }
+  }
   my $baudlen = $header -> value("BAUDLEN");
   my $pri =  $header -> value("CODELEN");
   $pri *= $baudlen;
