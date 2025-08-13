@@ -84,6 +84,11 @@ WARNING!:  Must be run on RSERV to avoid perl errors when calling curvecor!
 $logfile = shift;
 $object = shift;
 
+if ($object =~ /hdrf/) {
+  print STDERR "ERROR: object name has hdrf in it, which is very unlikely";
+  exit
+}
+
 # Get us started
 open (RDFSCRIPT, ">rdfscript");
 chmod 0775, "rdfscript";
