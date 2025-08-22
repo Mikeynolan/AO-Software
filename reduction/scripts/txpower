@@ -191,7 +191,7 @@ if ($opt_d) {  # use showriscans to get times from datafile
     } else { die "\n ERROR:  Datafile $opt_d not found!\n\n" }
 }
 if ($opt_L) { # List of times
-  open(DATA, "<$opt_L") || die;
+  open(DATA, "<$opt_L") || die $!;
   while (<DATA>) {
     /\s*([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})\s+([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})\s+([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}):([0-9]{2})/;
      $opt_f = $1.$2.$3.$4.$5.$6;
