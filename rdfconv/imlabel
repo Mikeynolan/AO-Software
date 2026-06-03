@@ -13,7 +13,7 @@ use POSIX;
 # For the cheezy csv parser
 my $file;
 my $lcfile;
-our ($opt_B,$opt_t,$opt_f, $opt_h, $opt_L, $opt_O, $opt_S, $opt_E, $opt_p, $opt_T, $opt_V);
+our ($opt_B,$opt_C,$opt_t,$opt_f, $opt_h, $opt_L, $opt_O, $opt_S, $opt_E, $opt_p, $opt_T, $opt_V);
 our $tfh;
 our $pfh;
 my $obssysfile;
@@ -36,7 +36,7 @@ my $dateP = DateTime::Format::Strptime->new(
 );
 
 
-getopts('B:t:L:hS:E:O:p:V:');
+getopts('B:C:t:L:hS:E:O:p:V:');
 
 if ($opt_h) {
   print STDERR <<EOT;
@@ -46,6 +46,7 @@ Usage: imlabel -L bundlelid -E editor -O orcid [-p powerfile] [-t template] [-S 
     -S:  File to contain Observing System xml
     -E:  Editor (required: Use full name with spaces)
     -O:  Editor ORCID (required)
+    -C:  Onject context reference if available
     -p:  powerfile file with list of times and transmit powers
     -T:  Targettype (default Asteroid)
     -B:  Observing system Bookmark (default AO TX;AO RX;AO RI)
@@ -65,6 +66,14 @@ if($opt_L) {
   $bundlelid = $opt_L;
 } else {
   die "Must provide bundle lid";
+}
+if($opt_C) {
+  $objectcontext = "<Internal_Reference>
+        <lid_reference>$opt_C</lid_reference>
+        <reference_type>data_to_target</reference_type>
+      </Internal_Reference>";
+} else {
+  $objectcontext = "";
 }
 if($opt_E) {
   $editor = $opt_E;
@@ -161,6 +170,7 @@ foreach $file (@ARGV) {
   $replace{'XXXLASTNAMEXXX'} = $2;
   $replace{'XXXORCIDXXX'} = $orcid;
   $replace{'XXXTTYPE'} = $ttype;
+  $replace{'XXXobjectcontext'} = $objectcontext;
   $cdate = $header->value('DATE');
   $replace{'XXXCDATE'} = $cdate;
   $replace{'XXXYEAR'} = substr($cdate, 0, 4);
@@ -486,7 +496,7 @@ our $template3 = <<EOT;
 XXXOBSSYSTEM
     <Target_Identification>
       <name>XXXTARGET</name>
-      <type>XXXTTYPE</type>
+      <type>XXXTTYPE</type>XXXobjectcontext
     </Target_Identification>
     <Discipline_Area>
       <radar:Radar>
