@@ -7,7 +7,9 @@ or as stdin and outputs the spin state portion of the other format. It
 undertands spin accelerations (YORP), but no other changing spin state
 parameters (precession in pck, npa, libration, spin impulses in mod files)
 It's probably not robust against nonstandard formatting. In particular,
-there can be no blank lines in the spin block.'
+there can be no blank lines in the spin block.
+
+Can also take in a "IAU Spin BlocK" from DAMIT, but it can't recognize it, 
 """
 from math import pi, sin, cos, atan2, asin, acos
 import numpy as np
@@ -49,9 +51,21 @@ def main():
 
     RE_PCK = re.compile(r'\\begindata')
     RE_MOD = re.compile(r'{SPIN STATE}')
+    RE_IAU = re.compile(r'[0-9.]+\s+[-0-9.]+\s+[0-9.]+')
     ftype = 0
+    firstline = ''
+    secondline = ''
+    isFirst = True
+    isSecond = False
     it = args.infile
     for line in it:
+        if isSecond:
+            issecond = False
+            secondline = line
+        elif isFirst:
+            isFirst = False
+            isSecond = True
+            firstline = line
         mo = re.search(RE_PCK, line)
         if mo:
             ftype = 1
@@ -63,7 +77,12 @@ def main():
 
     # THis is a perl-y way to do it.
     if (0 == ftype):
-        sys.exit('No spin state found')
+        mo = re.search(RE_IAU, firstline)
+        if mo:
+            ftype = 3
+            print("No markers and looks like it could be an IAUspin from DAMIT, converting to shape",file=sys.stderr)
+        else:
+            sys.exit('No spin state found')
 
     # We just found one or the other of the markers.
     if (1 == ftype):
@@ -177,8 +196,32 @@ def main():
         W2 = spin2dot/2  # squared term of polynomial, not accel
         writepck(stuff, W1, W2, args.naifid)
 
-# some arrays are transposed wrt matlab
+    elif (3 == ftype):
+        # IAUspin. Parse and send to spck2shape
+        # 100 -61 1050.402952
+        # 2451545.0 129.8
+        RA0 = 999.0
+        DEC0 = 999.0
+        W0 = 999.0
+        W2 = 0.0
+        vals = firstline.split()
+        RA0 = float(vals[0])
+        DEC0 = float(vals[1])
+        W1 = float(vals[2])
+        vals = secondline.split()
+        epoch = float(vals[0])
+        W0 = float(vals[1])
+        if epoch !=  2451545.0:
+            sys.exit('IAU spin with T0 ne  2451545.0 not yetsupported')
 
+        # Done parsing
+        it.close()
+        if RA0 < 990 and DEC0 < 990 and W0 < 990:
+            angles = pck2shape(RA0, DEC0, W0)
+            writemod(args.epoch, W1, W2, angles)
+        else:
+            print("Didn't find spin parameters in IAUspin file")
+            exit(1)
 
 def shape2pck(ETdays, angle0, angle1, angle2, spin2, spindot2):
     """Convert shape parameters to pck parameters.
@@ -324,9 +367,9 @@ def writemod(ep, W1, W2, angles):
 
     Parameters
     ----------
-    ep : string ISO date
+    ep : string ISO UTC date
         Date for use in setting the t0 in the spin block. THe angle is rotated
-        to this date from J2000 as provided.
+        to this date from J2000 TDB as provided.
     W1 : float
         Spin rate in degrees/day.
     W2 : float

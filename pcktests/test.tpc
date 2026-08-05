@@ -1,0 +1,7 @@
+This is the IAUspin converted to PCK for testing
+         \begindata
+            BODY2101955_POLE_RA    = (  100       0.              0. )
+            BODY2101955_POLE_DEC   = ( -61       0.              0. )
+            BODY2101955_PM         = ( 129.8   1050.402952 0 )
+            BODY2101955_LONG_AXIS  = (   0.                              )
+         \begintext
