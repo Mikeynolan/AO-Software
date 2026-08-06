@@ -9,7 +9,9 @@ parameters (precession in pck, npa, libration, spin impulses in mod files)
 It's probably not robust against nonstandard formatting. In particular,
 there can be no blank lines in the spin block.
 
-Can also take in a "IAU Spin BlocK" from DAMIT, but it can't recognize it, 
+Will also take in a "IAU Spin Block" from DAMIT, and turn it into a shape
+spin block.
+
 """
 from math import pi, sin, cos, atan2, asin, acos
 import numpy as np
@@ -19,11 +21,8 @@ import datetime
 import sys
 import argparse
 
-# search for either pck or mod marker.
-
-
 def main():
-    """Process pck or mod file.
+    """Process pck, mod, or IAUspin file.
 
     Determnine which file type input, parse it, and call the appropriate
     translator. Output to stdout.
@@ -53,6 +52,8 @@ def main():
     RE_MOD = re.compile(r'{SPIN STATE}')
     RE_IAU = re.compile(r'[0-9.]+\s+[-0-9.]+\s+[0-9.]+')
     ftype = 0
+    #Save the first two lines to check for IAUspin if neither of the others
+    # is found.
     firstline = ''
     secondline = ''
     isFirst = True
@@ -194,6 +195,8 @@ def main():
         stuff = shape2pck(daysJ2000, angle0, angle1, angle2, spin2, spin2dot)
         W1 = spin2 - daysJ2000 * spin2dot  # adjust spin2.
         W2 = spin2dot/2  # squared term of polynomial, not accel
+        if args.naifid == "2XXXXXX":
+            print("\nNo naifid specified, using dummy value that will not work in spice\n",file=sys.stderr)
         writepck(stuff, W1, W2, args.naifid)
 
     elif (3 == ftype):
